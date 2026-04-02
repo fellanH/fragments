@@ -1,0 +1,43 @@
+use crate::sync;
+use anyhow::{Context, Result};
+use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
+use std::path::Path;
+use std::sync::mpsc;
+use std::time::Duration;
+
+pub fn run(root: &Path) -> Result<()> {
+    let inject_dir = root.join("inject");
+
+    let (tx, rx) = mpsc::channel();
+
+    let mut debouncer = new_debouncer(Duration::from_millis(80), tx)
+        .context("failed to create file watcher")?;
+
+    debouncer
+        .watcher()
+        .watch(&inject_dir, RecursiveMode::Recursive)?;
+
+    loop {
+        match rx.recv() {
+            Ok(Ok(_events)) => {
+                println!("inject/ changed → syncing all HTML files");
+                match sync::sync_all(root) {
+                    Ok(n) => {
+                        if n > 0 {
+                            println!("  updated {n} file(s)");
+                        } else {
+                            println!("  already up to date");
+                        }
+                    }
+                    Err(e) => eprintln!("  error: {e:#}"),
+                }
+            }
+            Ok(Err(errs)) => {
+                eprintln!("watch error: {errs}");
+            }
+            Err(_) => break,
+        }
+    }
+
+    Ok(())
+}

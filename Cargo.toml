@@ -1,0 +1,12 @@
+[package]
+name = "html-sync"
+version = "0.2.0"
+edition = "2021"
+description = "Global variables for HTML — managed inline regions synced from fragment files"
+
+[dependencies]
+notify = "7"
+notify-debouncer-mini = "0.5"
+clap = { version = "4", features = ["derive"] }
+walkdir = "2"
+anyhow = "1"

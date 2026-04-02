@@ -1,0 +1,14 @@
+name: html-sync
+layout: single
+type: product
+status: active
+owner: felix
+
+stack:
+  - rust
+
+git:
+  identity: personal
+  push_allowed: true
+
+vault_bucket: kaizen
