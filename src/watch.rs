@@ -1,3 +1,4 @@
+use crate::config::Config;
 use crate::sync;
 use anyhow::{Context, Result};
 use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
@@ -5,8 +6,8 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::time::Duration;
 
-pub fn run(root: &Path) -> Result<()> {
-    let inject_dir = root.join("inject");
+pub fn run(root: &Path, config: &Config) -> Result<()> {
+    let fragments_dir = root.join(&config.fragments_dir);
 
     let (tx, rx) = mpsc::channel();
 
@@ -15,13 +16,13 @@ pub fn run(root: &Path) -> Result<()> {
 
     debouncer
         .watcher()
-        .watch(&inject_dir, RecursiveMode::Recursive)?;
+        .watch(&fragments_dir, RecursiveMode::Recursive)?;
 
     loop {
         match rx.recv() {
             Ok(Ok(_events)) => {
-                println!("inject/ changed → syncing all HTML files");
-                match sync::sync_all(root) {
+                println!("{}/ changed → syncing", config.fragments_dir);
+                match sync::sync_all(root, config) {
                     Ok(n) => {
                         if n > 0 {
                             println!("  updated {n} file(s)");

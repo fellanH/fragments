@@ -1,43 +1,61 @@
+use crate::config::Config;
 use anyhow::{bail, Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-/// Marker format: <!-- html-sync:NAME --> ... <!-- /html-sync:NAME -->
-const MARKERS: &[(&str, &str)] = &[
-    ("head", "head.html"),
-    ("body-open", "body-open.html"),
-    ("body-close", "body-close.html"),
-];
-
-fn open_tag(name: &str) -> String {
-    format!("<!-- html-sync:{name} -->")
+fn open_tag(prefix: &str, name: &str) -> String {
+    format!("<!-- {prefix}:{name} -->")
 }
 
-fn close_tag(name: &str) -> String {
-    format!("<!-- /html-sync:{name} -->")
+fn close_tag(prefix: &str, name: &str) -> String {
+    format!("<!-- /{prefix}:{name} -->")
 }
 
 pub struct Fragments {
+    prefix: String,
     entries: Vec<(String, String)>, // (marker name, file content)
 }
 
 impl Fragments {
-    pub fn load(inject_dir: &Path) -> Result<Self> {
+    pub fn load(fragments_dir: &Path, prefix: &str) -> Result<Self> {
         let mut entries = Vec::new();
-        for &(name, filename) in MARKERS {
-            let p = inject_dir.join(filename);
-            let content = fs::read_to_string(&p)
-                .with_context(|| format!("missing inject/{filename}"))?;
-            entries.push((name.to_string(), content));
+
+        let mut files: Vec<_> = fs::read_dir(fragments_dir)
+            .with_context(|| format!("cannot read {}", fragments_dir.display()))?
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .map(|ext| ext == "html")
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        files.sort_by_key(|e| e.file_name());
+
+        for entry in files {
+            let path = entry.path();
+            let name = path
+                .file_stem()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+            let content = fs::read_to_string(&path)
+                .with_context(|| format!("reading {}", path.display()))?;
+            entries.push((name, content));
         }
-        Ok(Self { entries })
+
+        Ok(Self {
+            prefix: prefix.to_string(),
+            entries,
+        })
     }
 }
 
-fn replace_marker_region(html: &str, name: &str, new_content: &str) -> Option<String> {
-    let open = open_tag(name);
-    let close = close_tag(name);
+fn replace_marker_region(html: &str, prefix: &str, name: &str, new_content: &str) -> Option<String> {
+    let open = open_tag(prefix, name);
+    let close = close_tag(prefix, name);
 
     let open_start = html.find(&open)?;
     let content_start = open_start + open.len();
@@ -55,16 +73,14 @@ fn replace_marker_region(html: &str, name: &str, new_content: &str) -> Option<St
 fn apply_fragments(html: &str, frags: &Fragments) -> Result<String> {
     let mut result = html.to_string();
     for (name, content) in &frags.entries {
-        match replace_marker_region(&result, name, content) {
-            Some(updated) => result = updated,
-            None => {} // marker not present in this file — skip silently
+        if let Some(updated) = replace_marker_region(&result, &frags.prefix, name, content) {
+            result = updated;
         }
     }
     Ok(result)
 }
 
-fn collect_html_files(root: &Path) -> Vec<PathBuf> {
-    let inject_dir = root.join("inject");
+fn collect_html_files(root: &Path, fragments_dir: &Path) -> Vec<PathBuf> {
     let tools_dir = root.join("tools");
 
     WalkDir::new(root)
@@ -72,7 +88,7 @@ fn collect_html_files(root: &Path) -> Vec<PathBuf> {
         .into_iter()
         .filter_entry(|e| {
             let p = e.path();
-            !p.starts_with(&inject_dir)
+            !p.starts_with(fragments_dir)
                 && !p.starts_with(&tools_dir)
                 && !p.starts_with(&root.join("node_modules"))
                 && !p.starts_with(&root.join("css"))
@@ -87,14 +103,18 @@ fn collect_html_files(root: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-pub fn sync_all(root: &Path) -> Result<usize> {
-    let inject_dir = root.join("inject");
-    if !inject_dir.is_dir() {
-        bail!("no inject/ directory in {}", root.display());
+pub fn sync_all(root: &Path, config: &Config) -> Result<usize> {
+    let fragments_dir = root.join(&config.fragments_dir);
+    if !fragments_dir.is_dir() {
+        bail!(
+            "no {}/ directory in {}",
+            config.fragments_dir,
+            root.display()
+        );
     }
 
-    let frags = Fragments::load(&inject_dir)?;
-    let files = collect_html_files(root);
+    let frags = Fragments::load(&fragments_dir, &config.marker_prefix)?;
+    let files = collect_html_files(root, &fragments_dir);
     let mut updated = 0;
 
     for path in &files {
@@ -120,10 +140,10 @@ fn sync_one(path: &Path, frags: &Fragments) -> Result<bool> {
     Ok(true)
 }
 
-pub fn check_all(root: &Path) -> Result<Vec<PathBuf>> {
-    let inject_dir = root.join("inject");
-    let frags = Fragments::load(&inject_dir)?;
-    let files = collect_html_files(root);
+pub fn check_all(root: &Path, config: &Config) -> Result<Vec<PathBuf>> {
+    let fragments_dir = root.join(&config.fragments_dir);
+    let frags = Fragments::load(&fragments_dir, &config.marker_prefix)?;
+    let files = collect_html_files(root, &fragments_dir);
     let mut stale = Vec::new();
 
     for path in &files {

@@ -1,4 +1,4 @@
-# html-compiler — a compiler for HTML
+# fragments — shared content sync for static files
 
 ## Problem
 
@@ -19,9 +19,11 @@ This tool gives agents (and humans) both: **the legibility of raw HTML and the l
 
 ## Vision
 
-A single Rust binary that closes HTML's gaps without changing the format. The input is `.html` files. The output is `.html` files. There is no intermediate representation, no build artifact, no framework. The tool **syncs shared content across HTML files** — you define a fragment once, mark where it belongs, and the tool keeps every page consistent.
+A single Rust binary that closes HTML's gaps without changing the format. The input is `.html` files. The output is `.html` files. There is no intermediate representation, no build artifact, no framework. The tool **syncs shared content across files** — you define a fragment once, mark where it belongs, and the tool keeps every page consistent.
 
 Every file is valid, self-contained HTML at all times — before sync, after sync, mid-edit. There is no template state, no placeholder syntax, no source-vs-output distinction. The output format is the input format. You can stop using the tool at any time and keep your files.
+
+The tool may extend beyond HTML in the future — the sync primitive works on any text file that supports comment markers.
 
 ## Agent-first design
 
@@ -32,7 +34,7 @@ The tool is designed so that AI agents can manage large static websites with min
 An agent working on a site managed by this tool only needs to understand:
 
 1. **Pages are `.html` files at the root.** One file = one route. `ls *.html` shows the sitemap.
-2. **Shared markup lives in `inject/`.** Edit `inject/body-open.html` to change the nav across all pages. Run `kaizen sync`.
+2. **Shared markup lives in `fragments/`.** Edit `fragments/body-open.html` to change the nav across all pages. Run `fragments sync`.
 3. **Every file is always valid HTML.** No templates, no placeholders, no build output. What's on disk is what renders.
 
 Three things to know. One command to run.
@@ -43,58 +45,57 @@ No component tree to trace. No import graph to resolve. No build cache to invali
 
 | Task | Without tool | With tool |
 |------|-------------|-----------|
-| Update nav link across 30 pages | Edit 30 files | Edit `inject/body-open.html` (1 file) |
-| Change price in 6 locations | Edit 6 files, hope you got them all | Edit `inject/pricing-amount.html` (1 file) |
-| Update testimonials on 3 pages | Copy-paste HTML into 3 files | Edit `inject/testimonials.html` (1 file) |
-| Swap CTA button style site-wide | Edit every page's CTA markup | Edit `inject/cta.html` (1 file) |
-| Add a new page with full chrome | Copy another page, manually sync head/nav/footer | `kaizen init about.html && kaizen sync` |
-| Audit what's shared vs. page-specific | Read every file, diff them | `ls inject/` — shared. Everything else is page-specific. |
+| Update nav link across 30 pages | Edit 30 files | Edit `fragments/body-open.html` (1 file) |
+| Change price in 6 locations | Edit 6 files, hope you got them all | Edit `fragments/pricing-amount.html` (1 file) |
+| Update testimonials on 3 pages | Copy-paste HTML into 3 files | Edit `fragments/testimonials.html` (1 file) |
+| Swap CTA button style site-wide | Edit every page's CTA markup | Edit `fragments/cta.html` (1 file) |
+| Add a new page with full chrome | Copy another page, manually sync head/nav/footer | `fragments init about.html && fragments sync` |
+| Audit what's shared vs. page-specific | Read every file, diff them | `ls fragments/` — shared. Everything else is page-specific. |
 
 ### Error surface is small
 
 An agent can break things in exactly two ways:
 1. Edit a marker region by hand (overwritten on next sync — self-healing).
-2. Malform an HTML comment marker (detectable: `kaizen check` reports unpaired markers).
+2. Malform an HTML comment marker (detectable: `fragments check` reports unpaired markers).
 
 That's it. There are no unresolved variables, no missing data files, no template syntax errors. Every file is always valid HTML.
 
 Compare this to a React app where an agent can break the build by misplacing an import, introducing a type error, creating a circular dependency, or passing the wrong prop type. The error surface with raw HTML + this tool is fundamentally smaller.
 
-## What exists today
-
-`html-sync` (in `website-v2/tools/html-sync/`) already does the first layer: shared fragments injected into marker regions across all pages. It uses plain string replacement — no HTML parsing.
-
-The Rust binary already depends on `lol_html` (Cloudflare's streaming HTML rewriter). lol_html can parse and rewrite HTML without building a full DOM tree, preserving whitespace, comments, and formatting. The output looks human-written, not compiler-generated.
-
 ## Capabilities
 
-The core model is **sync**: marked regions in page files are kept identical to source files in `inject/`. Every page is always valid, self-contained HTML — before sync, during sync, after sync. There is no intermediate template state.
+The core model is **sync**: marked regions in page files are kept identical to source files in `fragments/`. Every page is always valid, self-contained HTML — before sync, during sync, after sync. There is no intermediate template state.
 
-### 1. Shared fragments (exists)
+### Shared fragments
 
 ```html
-<!-- html-sync:head -->
+<!-- fragment:head -->
   <link rel="stylesheet" href="css/styles.css" />
-<!-- /html-sync:head -->
+<!-- /fragment:head -->
 ```
 
-Marked regions replaced with contents of `inject/<name>.html`. This is the `#include` of HTML. Already working.
+Marked regions replaced with contents of `fragments/<name>.html`. This is the `#include` of HTML.
 
 The key property: the content between markers is **real HTML that renders**. Before sync runs, the page works. After sync runs, the page works. The markers are standard HTML comments — invisible to browsers. No syntax foreign to HTML ever appears in a page file.
 
-### 2. Named custom fragments (next)
+### Dynamic fragment discovery
 
-```html
-<!-- html-sync:sidebar -->
-...
-<!-- /html-sync:sidebar -->
-```
+Any `fragments/<name>.html` file becomes a syncable fragment. Pages opt in by including the marker pair. No hardcoded list, no configuration needed.
 
-Extend beyond the three hardcoded fragment names (head, body-open, body-close). Any `inject/<name>.html` file becomes a syncable fragment. Pages opt in by including the marker pair.
-
-This is the only scaling mechanism needed. A price block, a CTA row, a testimonial grid, a feature comparison table — each becomes an `inject/<name>.html` file. Pages that share it include the marker pair. An agent edits one file, runs sync, and every page updates.
+A price block, a CTA row, a testimonial grid, a feature comparison table — each becomes a `fragments/<name>.html` file. Pages that share it include the marker pair. An agent edits one file, runs sync, and every page updates.
 
 One primitive, unlimited fragments, full coverage.
+
+### Configuration
+
+Optional `fragments.toml` at the project root:
+
+```toml
+marker_prefix = "fragment"     # prefix in <!-- PREFIX:name --> markers
+fragments_dir = "fragments"    # folder containing fragment source files
+```
+
+Both fields are optional. Missing file = all defaults. Different projects can use different conventions — old projects can set `marker_prefix = "html-sync"` for backwards compatibility.
 
 ## Considered and deferred
 
@@ -112,11 +113,9 @@ Would be replaced inline with contents of `partials/cta-row.html`. Unlike shared
 - If the partial source is updated and re-inserted, page-specific modifications are lost.
 - The agent now has to reason about two different systems (sync vs. include) instead of one.
 
-**How sync handles this instead:** If content is shared, use a sync fragment — the agent edits `inject/<name>.html` and it propagates. If content is page-specific, the agent writes it directly in the page file (agents are good at this). There's no in-between "insert once then diverge" state to track.
+**How sync handles this instead:** If content is shared, use a sync fragment — the agent edits `fragments/<name>.html` and it propagates. If content is page-specific, the agent writes it directly in the page file (agents are good at this). There's no in-between "insert once then diverge" state to track.
 
 ### Variables — deferred
-
-The following capabilities were also considered but deferred. They introduce non-HTML syntax into page files, breaking the principle that every `.html` file is always valid, renderable HTML.
 
 ```html
 <!-- Considered: -->
@@ -125,7 +124,7 @@ The following capabilities were also considered but deferred. They introduce non
 
 **Why deferred:** `{{package.price}}` is not HTML. A file containing it doesn't render correctly in a browser — the user sees literal `{{package.price}}` instead of `€2,500`. This creates two classes of files: source templates (broken in browser) and compiled output (works in browser). That's exactly the source/dist split we're avoiding.
 
-**How sync handles this instead:** If a price appears on multiple pages, put it in an `inject/` fragment. The fragment contains the real price as real HTML. Every page that includes the marker pair gets the real value. The agent edits `inject/pricing-amount.html` (which contains `€2,500`) and runs sync. Same single-edit propagation, but every file on disk is valid HTML at all times.
+**How sync handles this instead:** If a price appears on multiple pages, put it in a fragment. The fragment contains the real price as real HTML. Every page that includes the marker pair gets the real value. The agent edits `fragments/pricing-amount.html` (which contains `€2,500`) and runs sync. Same single-edit propagation, but every file on disk is valid HTML at all times.
 
 ### Repeat blocks — deferred
 
@@ -140,7 +139,7 @@ The following capabilities were also considered but deferred. They introduce non
 
 **Why deferred:** Depends on variables (`{{quote}}`), shares the same validity problem. A repeat template is not renderable HTML — it shows one placeholder instance instead of real content.
 
-**How sync handles this instead:** The expanded testimonials block (with real content) lives in `inject/testimonials.html`. An agent editing testimonials edits that fragment file directly — adding, removing, or reordering `<figure>` elements in real HTML. Then sync propagates it to every page that includes the `<!-- html-sync:testimonials -->` markers. More verbose than a JSON array, but every file is always valid HTML.
+**How sync handles this instead:** The expanded testimonials block (with real content) lives in `fragments/testimonials.html`. An agent editing testimonials edits that fragment file directly — adding, removing, or reordering `<figure>` elements in real HTML. Then sync propagates it to every page that includes the `<!-- fragment:testimonials -->` markers. More verbose than a JSON array, but every file is always valid HTML.
 
 ### Conditionals — deferred
 
@@ -155,7 +154,7 @@ The following capabilities were also considered but deferred. They introduce non
 
 **Why deferred:** Conditional blocks mean the file on disk contains markup that won't be served. The file doesn't match what the user sees. This is the template-vs-output gap again.
 
-**How to handle instead:** Maintain separate fragment variants if needed (`inject/cta-live.html`, `inject/cta-preview.html`) and swap which one is active. Or handle at the edge (Cloudflare Workers can rewrite HTML at serve time using the same lol_html). Environment-specific concerns belong at the serving layer, not in the source files.
+**How to handle instead:** Maintain separate fragment variants if needed (`fragments/cta-live.html`, `fragments/cta-preview.html`) and swap which one is active. Or handle at the edge (Cloudflare Workers can rewrite HTML at serve time using lol_html). Environment-specific concerns belong at the serving layer, not in the source files.
 
 ### When these might return
 
@@ -165,50 +164,50 @@ If the sync-only model proves insufficient for a real use case that can't be sol
 
 - **Not a framework.** No runtime JS, no virtual DOM, no hydration, no client-side routing.
 - **Not a template engine.** No variables, no loops, no expressions, no placeholder syntax. Every file is valid HTML at all times. See "Considered and deferred" for why.
-- **Not a CMS.** The tool doesn't provide a GUI, a database, or an API. You edit HTML files directly. (The `.kaizen` viewer is the GUI layer — separate concern.)
-- **Not a site generator.** It doesn't create files from a schema. It transforms existing HTML files in place. You own the file tree.
+- **Not a CMS.** The tool doesn't provide a GUI, a database, or an API. You edit HTML files directly.
+- **Not a site generator.** It doesn't create files from a schema. It transforms existing files in place. You own the file tree.
 - **Not a human-first DX tool that agents happen to use.** The primary user is an AI agent. The design choices optimize for agent legibility, predictable file I/O, small error surfaces, and one-command propagation. Humans benefit from the same properties, but the design is agent-first.
 
 ## Architecture
 
 ```
-site-root/
+project-root/
   index.html            ← pages (you edit these)
   pricing.html
   about.html
-  inject/
+  fragments/
     head.html           ← shared regions (synced into marker pairs)
     body-open.html
     body-close.html
     cta.html            ← any shared content block
     pricing-amount.html
     testimonials.html
+  fragments.toml        ← optional config
   css/styles.css
   fonts/
   favicon.svg
 ```
 
-The binary scans `*.html` at root and replaces every marker region with the corresponding `inject/<name>.html` contents. One pass, one mechanism. Files are only written when content changes (byte comparison).
+The binary scans `*.html` at root and replaces every marker region with the corresponding `fragments/<name>.html` contents. One pass, one mechanism. Files are only written when content changes (byte comparison).
 
 ## Modes
 
 | Command | Behavior |
 |---------|----------|
-| `kaizen sync` | One-shot: process all pages |
-| `kaizen watch` | Sync, then watch `inject/` for changes |
-| `kaizen check` | Dry-run: exit 1 if any page is stale (CI/pre-commit) |
-| `kaizen init <file>` | Insert empty marker pairs into a new HTML file |
+| `fragments sync` | One-shot: process all pages |
+| `fragments watch` | Sync, then watch `fragments/` for changes |
+| `fragments check` | Dry-run: exit 1 if any page is stale (CI/pre-commit) |
+| `fragments init <file>` | Create new page with marker pairs for all fragments |
 
 ## Design principles
 
 1. **The file is the truth.** After sync, every `.html` file is a valid, self-contained HTML document. No runtime resolution. What's on disk is what gets served. An agent reads the file and sees what the user sees.
 2. **The folder is the site.** `ls` shows you every route. Double-click to preview. Upload to deploy. No build artifacts, no `dist/` directory. An agent runs `ls *.html` and knows the sitemap.
 3. **Output = input.** The tool writes the same format it reads. You can hand-edit any output file and it remains valid input. An agent can edit output files without understanding the tool.
-4. **Preserve authorship.** lol_html's streaming rewriter doesn't re-serialize the document. Whitespace, comments, attribute order — all preserved. Diffs are minimal and reviewable.
+4. **Preserve authorship.** Whitespace, comments, attribute order — all preserved. Diffs are minimal and reviewable.
 5. **Single binary, zero dependencies.** No `node_modules`, no package manager, no version matrix. Copy the binary, it works. An agent doesn't need to resolve dependency conflicts or manage lockfiles.
-6. **Same technology as the edge.** lol_html is what Cloudflare Workers use internally. The tool that builds your site and the infrastructure that serves it speak the same language.
-7. **One edit, one command, full propagation.** The agent edits one file in `inject/`, runs `kaizen sync`, and the change appears across all affected pages. No manual coordination.
-8. **Machine-verifiable correctness.** `kaizen check` exits non-zero if anything is stale, unresolved, or malformed. An agent can run it after every edit to confirm the site is consistent — no visual inspection needed.
+6. **One edit, one command, full propagation.** The agent edits one file in `fragments/`, runs `fragments sync`, and the change appears across all affected pages. No manual coordination.
+7. **Machine-verifiable correctness.** `fragments check` exits non-zero if anything is stale, unresolved, or malformed. An agent can run it after every edit to confirm the site is consistent — no visual inspection needed.
 
 ## Agent workflow
 
@@ -218,44 +217,34 @@ A typical agent session managing a 30-page marketing site:
 1. Agent reads task: "Update pricing from €2,500 to €2,900 and add a new testimonial"
 
 2. Agent runs: ls *.html → sees all 30 pages (sitemap)
-   Agent runs: ls inject/ → sees all shared fragments
+   Agent runs: ls fragments/ → sees all shared fragments
 
-3. Agent edits inject/pricing-amount.html: changes €2,500 to €2,900
-   Agent edits inject/testimonials.html: adds a new <figure> block
+3. Agent edits fragments/pricing-amount.html: changes €2,500 to €2,900
+   Agent edits fragments/testimonials.html: adds a new <figure> block
 
-4. Agent runs: kaizen sync
+4. Agent runs: fragments sync
    → 12 pages updated (those with pricing-amount or testimonials markers)
    → 18 pages unchanged
 
-5. Agent runs: kaizen check → exit 0 (all consistent)
+5. Agent runs: fragments check → exit 0 (all consistent)
 
 6. Agent commits and deploys.
 ```
 
-Total files the agent touched: 2 (both in `inject/`).
+Total files the agent touched: 2 (both in `fragments/`).
 Total files that changed on disk: 12.
 Zero chance of missing a page or introducing inconsistency.
 Every file on disk — source and output — is valid HTML at every step.
 
-For comparison, the same task with a React + MDX site requires the agent to trace data flow through components, props, content files, and build output — touching more files with more opportunities for error.
+## Implementation status
 
-## Relationship to .kaizen file format
-
-The `.kaizen` file is a zip archive containing a manifest, section templates, a design system, and a self-rendering viewer. It's the **portable document** form of a website.
-
-The html-compiler is the **development-time** tool that operates on the same concept — shared fragments synced across files — but works on a live file tree instead of a zip archive. The section templates in `.kaizen` are conceptually the same as `inject/` fragments here.
-
-A future bridge: `kaizen export` zips the site into a `.kaizen` file. `kaizen import` unpacks one into an editable file tree.
-
-## Implementation path
-
-| Phase | What | Extends html-sync? |
-|-------|------|---------------------|
-| 0 | Shared fragments (3 fixed names) | **Already shipped** |
-| 1 | Named custom fragments (`inject/<any>.html`) | Yes — small change |
-| 2 | Rename binary from `html-sync` to `kaizen` | Rebrand |
-| 3 | `kaizen init`, `kaizen export` | New subcommands |
-
-Each phase is independently useful. The tool is already in production (Phase 0). Phase 1 is the key unlock — it turns the tool from "sync head/nav/footer" into "sync anything."
+| Phase | What | Status |
+|-------|------|--------|
+| 0 | Shared fragments (3 fixed names) | Done |
+| 1 | Dynamic fragment discovery (`fragments/<any>.html`) | Done |
+| 1b | Manifest config (`fragments.toml`) | Done |
+| 1c | Init command (`fragments init <file>`) | Done |
+| 2 | Rename from `html-sync` to `fragments` | Done |
+| — | Extend beyond HTML to other text formats | Future |
 
 Partials, variables, repeats, and conditionals are documented in "Considered and deferred" above. They can be reconsidered if the sync-only model proves insufficient for a concrete use case.

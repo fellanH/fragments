@@ -1,17 +1,30 @@
-# html-sync — Arc
+# fragments — Arc
 
 ## Current focus
 
-Workspace just scaffolded. Source moved from `workspaces/kaizen/website-v2/tools/html-sync/`.
+Core tool complete. All naming aligned as `fragments` / `fragment`.
+
+## Completed
+
+1. **Dynamic fragment discovery** — any `fragments/<name>.html` is a syncable fragment
+2. **Manifest config** — optional `fragments.toml` with `marker_prefix` and `fragments_dir`
+3. **Folder rename** — `inject/` → `fragments/` as default
+4. **Init command** — `fragments init <file>` scaffolds a new page with marker pairs
+5. **Agent instructions** — `fragments init` generates `fragments/AGENTS.md` for agent discoverability
+6. **Test suite** — 19 integration tests
+7. **Rename to fragments** — binary, config file, default marker prefix all aligned
+8. **Consumer site migrated** — `website-v2` markers updated from `html-sync:` to `fragment:`
+9. **Spec updated** — `specs/html-compiler.md` fully aligned with new naming
 
 ## Next
 
-1. **Phase 1: Named custom fragments** — remove the hardcoded 3-name limit, scan `inject/` for all `*.html` files and sync any matching marker pair. This is the key unlock that turns the tool from "sync head/nav/footer" into "sync anything."
-2. **Phase 2: Rename to `kaizen`** — rebrand binary and CLI.
-3. **Phase 3: `kaizen init`, `kaizen export`** — new subcommands.
+- Rename workspace folder from `html-sync` to `fragments`
+- Consider extending beyond HTML (the tool already works on any text file with comment markers)
 
 ## Decisions
 
-- Single primitive: sync fragments. No variables, no partials, no template syntax. See `specs/html-compiler.md` "Considered and deferred."
+- Single primitive: sync fragments. No variables, no partials, no template syntax.
 - Agent-first design: the primary user is an AI agent managing large static sites.
-- Binary installed via `cargo install --path .` (on PATH at `~/.cargo/bin/html-sync`).
+- Binary installed via `cargo install --path .` (on PATH at `~/.cargo/bin/fragments`).
+- Manifest (`fragments.toml`) decouples conventions from binary — different projects can use different marker prefixes and folder names.
+- Default marker prefix is `fragment`, default folder is `fragments/`. Old projects set `marker_prefix = "html-sync"` for backwards compat.
