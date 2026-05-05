@@ -1,0 +1,11 @@
+{
+  "name": "fragments",
+  "version": "0.5.0",
+  "private": true,
+  "omni": {
+    "type": "product",
+    "category": "tooling",
+    "status": "active",
+    "vault_bucket": "fragments"
+  }
+}
