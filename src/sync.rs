@@ -71,10 +71,56 @@ fn replace_marker_region(
     Some(result)
 }
 
-fn apply_fragments(html: &str, frags: &Fragments) -> Result<String> {
+/// A transform applied to fragment content per target file before
+/// the content is inserted into the marker region.
+///
+/// Hooks chain sequentially: each hook receives the output of the
+/// previous hook (the first hook receives the canonical fragment
+/// content from disk).
+///
+/// The fragment file on disk is never modified — transforms apply only
+/// to the copy that lands inside the target's marker region. This lets
+/// consumers do per-target adaptations (path rewriting, variant
+/// selection, format-specific escaping) without splitting the canonical
+/// source into per-target derived files.
+///
+/// Reference consumer: `pagekit`. Sprint 4 D2 uses a hook to rewrite
+/// relative hrefs based on the target page's directory depth.
+pub trait SyncHook: Send + Sync {
+    /// Transform `content` for a specific `target` file.
+    ///
+    /// - `name`: the fragment name (allows hooks to scope by name)
+    /// - `content`: the fragment content as it stands after prior hooks
+    /// - `target`: the file path the content is being inserted into
+    /// - `root`: the project root (useful for computing relative paths)
+    ///
+    /// Return the transformed content. For identity (no change), return
+    /// `content.to_string()`. To halt sync, return `Err(...)`.
+    fn transform(&self, name: &str, content: &str, target: &Path, root: &Path) -> Result<String>;
+}
+
+fn apply_fragments(
+    html: &str,
+    frags: &Fragments,
+    target: &Path,
+    root: &Path,
+    hooks: &[Box<dyn SyncHook>],
+) -> Result<String> {
     let mut result = html.to_string();
     for (name, content) in &frags.entries {
-        if let Some(updated) = replace_marker_region(&result, &frags.prefix, name, content) {
+        let mut transformed = content.clone();
+        for hook in hooks {
+            transformed = hook
+                .transform(name, &transformed, target, root)
+                .with_context(|| {
+                    format!(
+                        "sync hook failed on fragment '{}' for target {}",
+                        name,
+                        target.display()
+                    )
+                })?;
+        }
+        if let Some(updated) = replace_marker_region(&result, &frags.prefix, name, &transformed) {
             result = updated;
         }
     }
@@ -104,7 +150,19 @@ pub(crate) fn collect_html_files(
         .collect()
 }
 
+/// Sync all target files. Equivalent to [`sync_all_with`] with no hooks.
 pub fn sync_all(root: &Path, config: &Config) -> Result<usize> {
+    sync_all_with(root, config, &[])
+}
+
+/// Sync all target files, applying `hooks` to each fragment's content
+/// before it's written into a marker region. Hooks chain sequentially.
+///
+/// Use this entry point when content needs to be transformed per-target
+/// (e.g., path rewriting based on target depth, variant selection by
+/// page identity). Hooks see fragment content; the fragment files on
+/// disk are unchanged.
+pub fn sync_all_with(root: &Path, config: &Config, hooks: &[Box<dyn SyncHook>]) -> Result<usize> {
     let fragments_dir = root.join(&config.fragments_dir);
     if !fragments_dir.is_dir() {
         bail!(
@@ -133,7 +191,7 @@ pub fn sync_all(root: &Path, config: &Config) -> Result<usize> {
     let mut updated = 0;
 
     for path in &files {
-        if sync_one(path, &frags)? {
+        if sync_one(path, root, &frags, hooks)? {
             updated += 1;
             println!("  {}", path.strip_prefix(root).unwrap_or(path).display());
         }
@@ -142,10 +200,15 @@ pub fn sync_all(root: &Path, config: &Config) -> Result<usize> {
     Ok(updated)
 }
 
-fn sync_one(path: &Path, frags: &Fragments) -> Result<bool> {
+fn sync_one(
+    path: &Path,
+    root: &Path,
+    frags: &Fragments,
+    hooks: &[Box<dyn SyncHook>],
+) -> Result<bool> {
     let current =
         fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    let updated = apply_fragments(&current, frags)?;
+    let updated = apply_fragments(&current, frags, path, root, hooks)?;
 
     if updated == current {
         return Ok(false);
@@ -179,7 +242,24 @@ pub enum CheckIssue {
     },
 }
 
+/// Check all target files for stale, malformed, or duplicate markers.
+/// Equivalent to [`check_all_with`] with no hooks.
 pub fn check_all(root: &Path, config: &Config) -> Result<Vec<CheckIssue>> {
+    check_all_with(root, config, &[])
+}
+
+/// Check all target files, applying `hooks` when computing the expected
+/// content for each target. A target is reported as `Stale` only if its
+/// current content differs from what `sync_all_with(hooks)` would write.
+///
+/// Consumers that pass hooks to `sync_all_with` MUST pass the same hooks
+/// to `check_all_with` for staleness reports to be consistent. CI gates
+/// that don't match the sync configuration will produce false positives.
+pub fn check_all_with(
+    root: &Path,
+    config: &Config,
+    hooks: &[Box<dyn SyncHook>],
+) -> Result<Vec<CheckIssue>> {
     let fragments_dir = root.join(&config.fragments_dir);
     let scan_root = root.join(&config.target_dir);
     let frags = Fragments::load(&fragments_dir, &config.marker_prefix)?;
@@ -212,7 +292,7 @@ pub fn check_all(root: &Path, config: &Config) -> Result<Vec<CheckIssue>> {
             }
         }
 
-        let expected = apply_fragments(&current, &frags)?;
+        let expected = apply_fragments(&current, &frags, path, root, hooks)?;
         if current != expected {
             issues.push(CheckIssue::Stale(rel));
         }

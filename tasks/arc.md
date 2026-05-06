@@ -1,26 +1,22 @@
 # fragments
 
-Marker-region sync for any text format with comment-pair syntax. 40 tests passing.
+Marker-region sync. v0.6.0 (SyncHook API). 34 tests passing across integration + hooks suites.
 
 ## Active arc
 
-**Stage 1 of fragments → pagekit fork.** Reframing fragments as a format-agnostic primitive; HTML-specific helpers (`init`, `extract`, framework profiles) move to a new [`pagekit`](../pagekit) workspace.
+Idle on fragments core. The fragments → pagekit fork is fully shipped (Stages 1-3); fragments is the format-agnostic primitive, pagekit is the HTML site management layer. Both consumers sync clean.
 
-Stage 1 (this commit): documentation only. Spec preamble rewritten, AGENTS.md neutralized, default `exclude_dirs` cleared (config-over-convention). Code unchanged — `init` and `extract` still ship in the fragments binary.
-
-Stage 2 (next): code split. `lib.rs` in fragments exposes public API; `init.rs`/`extract.rs` move into pagekit; `[[extract.candidates]]` config moves with them.
-
-Stage 3 (later): pagekit's `extract` migrates from `scraper` to `lol_html` (cleaner source-rewrite, no attribute-normalization hack).
-
-felixhellstrom.com remains the canonical real-site consumer for the HTML use case. Will migrate to the pagekit binary once Stage 2 ships.
+v0.6.0 just added the `SyncHook` API for per-target fragment transforms. Driven by pagekit Sprint 4 D2 (path-relative sync transforms for ettsmart.se's per-depth relative paths). pagekit will be the first real consumer of the hook API; their integration is the validation pass.
 
 ## Decisions
 
 - Format-agnostic primitive. No HTML-specific opinionation in fragments core.
 - pagekit owns HTML/website-specific surface; depends on fragments crate.
 - Default `exclude_dirs` is empty — config over convention.
+- Default `fragments_dir = "_fragments"` — underscore prefix signals to deploy hosts.
 - Direct `fs::write` (truncation risk accepted; recovery is sync re-run + check).
 - Single-binary CLI in pagekit re-exposes fragments commands; agent UX is one binary, one CLI.
+- Per-target transforms live in fragments via `SyncHook`, not in consumers via pre-derivation. Pagekit's pull triggered the call (Sprint 4 D2). Argument was that "the same fragment, adapted for where it goes" is naturally part of sync; the hook API validates that against a real consumer immediately rather than waiting for a hypothetical second one.
 
 ## Open questions
 
@@ -32,8 +28,6 @@ felixhellstrom.com remains the canonical real-site consumer for the HTML use cas
 
 ## Backlog
 
-- **Stage 2** (code split): `lib.rs` in fragments exposes core APIs; `init.rs`/`extract.rs` move to pagekit; pagekit binary builds and tests.
-- **Stage 3** (lol_html): rewrite `extract` on `lol_html` in pagekit.
 - **Far future** (only if a non-HTML consumer pulls): comment-syntax-per-extension config so `/* */`, `# `, `// `, etc. work natively without setting `marker_prefix`.
 
 ## Blocked

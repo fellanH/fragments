@@ -30,6 +30,29 @@ Bulk content management without templates. An agent (or human) edits one file in
 
 The original motivating use case was vanilla HTML websites — managing nav links, shared headers, pricing across many pages without reaching for a JS framework. That use case is now best served by [`pagekit`](../pagekit), which composes fragments core and adds HTML-specific helpers (page scaffolding, DOM-aware extraction). Fragments itself stays general — useful for any text format with comment-pair syntax.
 
+## Library API: SyncHook
+
+Library consumers (notably `pagekit`) can register transform hooks that mutate fragment content per target file before insertion. The fragment file on disk stays canonical; the transform applies only to the copy that lands in the target's marker region.
+
+```rust
+use fragments::{Config, SyncHook, sync_all_with};
+
+struct DepthRelativizer;
+impl SyncHook for DepthRelativizer {
+    fn transform(&self, _name: &str, content: &str, target: &Path, root: &Path) -> Result<String> {
+        let depth = depth_of(target, root);
+        Ok(rewrite_relative_hrefs(content, depth))
+    }
+}
+
+let hooks: Vec<Box<dyn SyncHook>> = vec![Box::new(DepthRelativizer)];
+fragments::sync_all_with(&root, &config, &hooks)?;
+```
+
+Hooks chain sequentially. The first hook receives the canonical fragment content; each subsequent hook receives the prior hook's output. Errors propagate via `?`.
+
+For consistency, consumers calling `sync_all_with(hooks)` MUST also call `check_all_with(hooks)` — otherwise CI staleness reports will be wrong (check would compare against unhooked content while sync writes hooked content).
+
 ## Sibling: pagekit
 
 `pagekit` is the opinionated layer for vanilla HTML site management. It depends on `fragments` for the sync primitive and adds:

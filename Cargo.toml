@@ -1,6 +1,6 @@
 [package]
 name = "fragments"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 description = "Sync shared text fragments across files — one primitive, unlimited coverage"
 

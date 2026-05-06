@@ -21,4 +21,7 @@ pub mod sync;
 pub mod watch;
 
 pub use config::Config;
-pub use sync::{check_all, referenced_fragment_names, sync_all, CheckIssue, Fragments};
+pub use sync::{
+    check_all, check_all_with, referenced_fragment_names, sync_all, sync_all_with, CheckIssue,
+    Fragments, SyncHook,
+};
