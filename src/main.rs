@@ -1,5 +1,6 @@
 mod config;
 mod extract;
+mod file_io;
 mod init;
 mod sync;
 mod watch;

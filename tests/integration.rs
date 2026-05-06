@@ -670,6 +670,36 @@ fn legacy_html_sync_prefix_via_config() {
     assert!(result.contains("<meta charset=\"utf-8\">"));
 }
 
+// --- Crash-safe writes (tempfile + rename) ---
+
+#[test]
+fn sync_leaves_no_temp_files() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    setup_site(
+        root,
+        &[("head.html", "<meta charset=\"utf-8\">")],
+        &[(
+            "index.html",
+            "<!-- fragment:head -->\nold\n<!-- /fragment:head -->",
+        )],
+    );
+
+    let output = run_sync(root);
+    assert!(output.status.success());
+
+    // After a clean sync, the rename idiom must clean up after itself —
+    // no `.fragments-*.tmp` leftovers visible to readers.
+    for entry in fs::read_dir(root).unwrap() {
+        let name = entry.unwrap().file_name().into_string().unwrap();
+        assert!(
+            !name.contains("fragments-") || !name.ends_with(".tmp"),
+            "unexpected temp file leaked: {name}"
+        );
+    }
+}
+
 // --- Extract command ---
 
 fn run_extract(dir: &Path) -> std::process::Output {

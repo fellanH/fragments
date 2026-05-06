@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::file_io::replace_file;
 use anyhow::{bail, Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -145,7 +146,8 @@ fn sync_one(path: &Path, frags: &Fragments) -> Result<bool> {
         return Ok(false);
     }
 
-    fs::write(path, &updated)?;
+    replace_file(path, updated.as_bytes())
+        .with_context(|| format!("writing {}", path.display()))?;
     Ok(true)
 }
 
