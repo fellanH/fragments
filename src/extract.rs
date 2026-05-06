@@ -1,6 +1,5 @@
 use crate::config::Config;
-use crate::file_io::replace_file;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use scraper::{Html, Selector};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -171,7 +170,8 @@ pub fn extract_fragments(root: &Path, config: &Config) -> Result<usize> {
     // Write fragment files (using scraper's normalized HTML)
     for block in &shared_blocks {
         let frag_path = fragments_dir.join(format!("{}.html", block.name));
-        replace_file(&frag_path, block.content.as_bytes())?;
+        fs::write(&frag_path, &block.content)
+            .with_context(|| format!("writing {}", frag_path.display()))?;
         println!("  Extracted: {}/{}.html", config.fragments_dir, block.name);
     }
 
@@ -233,7 +233,7 @@ pub fn extract_fragments(root: &Path, config: &Config) -> Result<usize> {
         }
 
         if changed {
-            replace_file(path, modified.as_bytes())?;
+            fs::write(path, &modified).with_context(|| format!("writing {}", path.display()))?;
             modified_count += 1;
         }
     }

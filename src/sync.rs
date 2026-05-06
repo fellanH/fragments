@@ -1,5 +1,4 @@
 use crate::config::Config;
-use crate::file_io::replace_file;
 use anyhow::{bail, Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -146,8 +145,11 @@ fn sync_one(path: &Path, frags: &Fragments) -> Result<bool> {
         return Ok(false);
     }
 
-    replace_file(path, updated.as_bytes())
-        .with_context(|| format!("writing {}", path.display()))?;
+    // Direct truncate-and-write. A SIGKILL or power loss between the
+    // truncate and the last byte hitting disk leaves a partial file;
+    // recovery is `fragments sync` again (idempotent). Trade chosen
+    // deliberately over tempfile+rename to keep inode/perms/xattrs intact.
+    fs::write(path, &updated).with_context(|| format!("writing {}", path.display()))?;
     Ok(true)
 }
 
