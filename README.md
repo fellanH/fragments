@@ -15,6 +15,7 @@ fragments <project-root> sync            # one-shot sync (default)
 fragments <project-root> watch           # sync + watch fragments/ for changes
 fragments <project-root> check           # dry-run, exit 1 if stale
 fragments <project-root> init about.html # create new page with marker pairs
+fragments <project-root> extract         # detect duplicate blocks, extract to fragments/, insert markers
 ```
 
 ## How it works

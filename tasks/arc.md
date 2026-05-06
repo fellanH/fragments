@@ -1,6 +1,6 @@
 # fragments
 
-Core tool complete. 19 tests. Binary, config, naming all aligned.
+Core tool complete. 22 tests. Binary, config, naming, extract all aligned.
 
 ## Decisions
 
@@ -10,9 +10,7 @@ Core tool complete. 19 tests. Binary, config, naming all aligned.
 
 ## Backlog
 
-- Nested fragments (see `specs/fragments.md`)
-- Extract command (`fragments extract <name> --from <file>`)
-- Reverse sync (`fragments pull`)
+- Nested fragments — kept deferred per `specs/fragments.md`. Trigger: a real site where sync-only granularity is insufficient and granular fragments don't solve it. Owner: Felix on next fragments-heavy build.
 
 ## Blocked
 

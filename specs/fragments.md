@@ -289,9 +289,10 @@ Every file on disk — source and output — is valid HTML at every step.
 | 1b | Manifest config (`fragments.toml`) | Done |
 | 1c | Init command (`fragments init <file>`) | Done |
 | 2 | Rename from `html-sync` to `fragments` | Done |
+| 3 | Extract command (duplicate-detection variant: `fragments extract`) | Done |
 | — | Extend beyond HTML to other text formats | Future |
 | — | Nested fragments (composition within fragment sources) | Deferred |
-| — | Extract command with auto-wrap (`fragments extract`) | Deferred |
+| — | Extract command with auto-wrap (exact-match all pages from one source) | Deferred |
 | — | Reverse sync (page → source, `fragments pull`) | Deferred |
 
 Partials, variables, repeats, conditionals, nested fragments, extract, and reverse sync are documented in "Considered and deferred" above. They can be reconsidered if the sync-only model proves insufficient for a concrete use case.
