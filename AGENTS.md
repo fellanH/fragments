@@ -76,6 +76,6 @@ Empty MCP scope. This is a Rust tool workspace — no MCP servers consumed at th
 Promoted to standalone workspace 2026-05-05 from two divergent sources:
 
 - `workspaces/_archive/fragments/` — full chrome (README, specs, tests, workspace.yaml), v0.4.0, missing `extract.rs` and `scraper` dep.
-- `workspaces/klarhimmel/projects/freedom-cms/crates/fragments/` — newer src/ (added `extract.rs` + `scraper` dep), bare crate shell.
+- `workspaces/freedom-cms/crates/fragments/` (then nested under `klarhimmel/projects/`; freedom-cms was promoted to a top-level workspace 2026-05-06) — newer src/ (added `extract.rs` + `scraper` dep), bare crate shell.
 
 Consolidated to v0.5.0 with the freedom-cms `src/` as canonical and the archive's chrome folded back in. Driven by friction insight `01KQWS3QG23S2ATAM3TMC793CP`: the installed binary lacked `Extract` because the build came from the archive while the working code lived in freedom-cms. Two trees same-version is the bug class; standalone workspace is the recovery.
