@@ -3,7 +3,7 @@ use std::path::Path;
 use tempfile::TempDir;
 
 fn setup_site(dir: &Path, fragments: &[(&str, &str)], pages: &[(&str, &str)]) {
-    let frag_dir = dir.join("fragments");
+    let frag_dir = dir.join("_fragments");
     fs::create_dir_all(&frag_dir).unwrap();
     for (name, content) in fragments {
         fs::write(frag_dir.join(name), content).unwrap();
@@ -38,7 +38,7 @@ fn extract_fragments_dir(config: &str) -> String {
             return val.to_string();
         }
     }
-    "fragments".to_string()
+    "_fragments".to_string()
 }
 
 fn run_sync(dir: &Path) -> std::process::Output {
@@ -383,7 +383,7 @@ fn exclude_dirs_skips_listed_subdirectories() {
     )
     .unwrap();
 
-    let frag_dir = root.join("fragments");
+    let frag_dir = root.join("_fragments");
     fs::create_dir_all(&frag_dir).unwrap();
     fs::write(frag_dir.join("head.html"), "<meta charset=\"utf-8\">").unwrap();
 
@@ -420,7 +420,7 @@ fn max_depth_caps_walk_depth() {
 
     fs::write(root.join("fragments.toml"), "max_depth = 2\n").unwrap();
 
-    let frag_dir = root.join("fragments");
+    let frag_dir = root.join("_fragments");
     fs::create_dir_all(&frag_dir).unwrap();
     fs::write(frag_dir.join("head.html"), "<meta charset=\"utf-8\">").unwrap();
 
@@ -544,7 +544,7 @@ fn target_dir_scans_subdirectory() {
 
     fs::write(root.join("fragments.toml"), "target_dir = \"www\"\n").unwrap();
 
-    let frag_dir = root.join("fragments");
+    let frag_dir = root.join("_fragments");
     fs::create_dir_all(&frag_dir).unwrap();
     fs::write(frag_dir.join("head.html"), "<meta charset=\"utf-8\">").unwrap();
     fs::write(frag_dir.join("nav.html"), "<nav>Main Nav</nav>").unwrap();
@@ -573,7 +573,7 @@ fn target_dir_check_works() {
 
     fs::write(root.join("fragments.toml"), "target_dir = \"www\"\n").unwrap();
 
-    let frag_dir = root.join("fragments");
+    let frag_dir = root.join("_fragments");
     fs::create_dir_all(&frag_dir).unwrap();
     fs::write(frag_dir.join("head.html"), "<meta charset=\"utf-8\">").unwrap();
 
@@ -677,14 +677,16 @@ fn run_config(dir: &Path) -> std::process::Output {
 fn config_print_shows_defaults_when_no_toml() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
-    fs::create_dir_all(root.join("fragments")).unwrap();
+    fs::create_dir_all(root.join("_fragments")).unwrap();
 
     let output = run_config(root);
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     assert!(stdout.contains("marker_prefix = \"fragment\""));
-    assert!(stdout.contains("fragments_dir = \"fragments\""));
+    // Default folder is `_fragments` (underscore prefix) so static-site
+    // hosts treat it as infrastructure and skip it during deploy.
+    assert!(stdout.contains("fragments_dir = \"_fragments\""));
     assert!(stdout.contains("max_depth = 5"));
     // fragments core has no built-in exclude defaults — config-over-convention.
     // Format-specific defaults (e.g. css/fonts for HTML sites) live in pagekit

@@ -110,15 +110,13 @@ Optional `fragments.toml` at the project root:
 
 ```toml
 marker_prefix = "fragment"     # prefix in <!-- PREFIX:name --> markers
-fragments_dir = "fragments"    # folder containing fragment source files
+fragments_dir = "_fragments"   # folder containing fragment source files
 target_dir    = "."            # where pages live, relative to project root
-exclude_dirs  = [              # subdirectories to skip when scanning for pages
-  "node_modules", "tools", "css", "fonts", "_assets",
-]
+exclude_dirs  = []             # subdirectories to skip when scanning for pages
 max_depth     = 5              # max walk depth from target_dir
 ```
 
-All fields are optional. Missing file = all defaults. Different projects can use different conventions — old projects can set `marker_prefix = "html-sync"` for backwards compatibility, or extend `exclude_dirs` with project-specific folders (`dist`, `build`, `public`).
+All fields are optional. Missing file = all defaults. The `_fragments` default uses an underscore prefix so static-site hosts (CF Pages, Eleventy, Jekyll, etc.) treat the folder as infrastructure and skip it during deploy. Different projects can use different conventions — old projects can set `marker_prefix = "html-sync"` for backwards compatibility, or populate `exclude_dirs` with project-specific folders (`dist`, `build`, `public`, `node_modules`, `css`, `fonts`).
 
 #### Custom extract candidates
 
@@ -301,8 +299,8 @@ project-root/
   index.html            ← pages (you edit these)
   pricing.html
   about.html
-  fragments/
-    head.html           ← shared regions (synced into marker pairs)
+  _fragments/           ← shared regions (synced into marker pairs);
+    head.html             underscore-prefixed so deploy hosts skip it
     body-open.html
     body-close.html
     cta.html            ← any shared content block

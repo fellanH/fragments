@@ -24,7 +24,11 @@ felixhellstrom.com remains the canonical real-site consumer for the HTML use cas
 
 ## Open questions
 
-- Default `fragments_dir`: spec says `fragments`, felixhellstrom uses `_fragments`. Wait for n=2 confirmation before flipping default.
+(none open)
+
+## Resolved
+
+- Default `fragments_dir = "_fragments"` (underscore prefix). Resolved 2026-05-06 — Felix confirmed all sites in his stack use the underscore convention so static-site hosts (CF Pages, Eleventy, Jekyll) treat the folder as infrastructure and skip it during deploy. Was previously `fragments` per spec; flipped to match consumer practice.
 
 ## Backlog
 

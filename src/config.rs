@@ -26,7 +26,12 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             marker_prefix: "fragment".to_string(),
-            fragments_dir: "fragments".to_string(),
+            // Default `_fragments` (with underscore prefix) so the folder
+            // is excluded from deploy by static-site hosts that treat
+            // underscore-prefixed dirs as infrastructure (CF Pages,
+            // Eleventy, Jekyll, etc.). This convention is the dominant
+            // pattern across consumers.
+            fragments_dir: "_fragments".to_string(),
             target_dir: ".".to_string(),
             // Format-agnostic primitive: no built-in defaults. Each
             // consumer declares the dirs they want skipped. Website-shaped
