@@ -79,16 +79,20 @@ fn find_matching_tag_span(src: &str, tag: &str, expected: &str) -> Option<(usize
     None
 }
 
-fn collect_html_files(root: &Path, fragments_dir: &Path) -> Vec<PathBuf> {
+fn collect_html_files(
+    root: &Path,
+    fragments_dir: &Path,
+    exclude_dirs: &[String],
+    max_depth: usize,
+) -> Vec<PathBuf> {
+    let excluded: Vec<PathBuf> = exclude_dirs.iter().map(|d| root.join(d)).collect();
+
     WalkDir::new(root)
-        .max_depth(5)
+        .max_depth(max_depth)
         .into_iter()
         .filter_entry(|e| {
             let p = e.path();
-            !p.starts_with(fragments_dir)
-                && !p.starts_with(root.join("_assets"))
-                && !p.starts_with(root.join("css"))
-                && !p.starts_with(root.join("fonts"))
+            !p.starts_with(fragments_dir) && !excluded.iter().any(|ex| p.starts_with(ex))
         })
         .filter_map(Result::ok)
         .filter(|e| {
@@ -103,7 +107,8 @@ fn collect_html_files(root: &Path, fragments_dir: &Path) -> Vec<PathBuf> {
 pub fn extract_fragments(root: &Path, config: &Config) -> Result<usize> {
     let fragments_dir = root.join(&config.fragments_dir);
 
-    let html_files = collect_html_files(root, &fragments_dir);
+    let html_files =
+        collect_html_files(root, &fragments_dir, &config.exclude_dirs, config.max_depth);
 
     if html_files.len() < 2 {
         println!("  Less than 2 HTML pages, skipping extraction.");

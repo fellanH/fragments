@@ -353,6 +353,104 @@ fn arbitrary_fragment_names_work() {
 // --- Manifest config ---
 
 #[test]
+fn exclude_dirs_skips_listed_subdirectories() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    fs::write(
+        root.join("fragments.toml"),
+        "exclude_dirs = [\"dist\", \"build\"]\n",
+    )
+    .unwrap();
+
+    let frag_dir = root.join("fragments");
+    fs::create_dir_all(&frag_dir).unwrap();
+    fs::write(frag_dir.join("head.html"), "<meta charset=\"utf-8\">").unwrap();
+
+    let stale_marker = "<!-- fragment:head -->\nstale\n<!-- /fragment:head -->";
+    fs::write(root.join("index.html"), stale_marker).unwrap();
+    fs::create_dir_all(root.join("dist")).unwrap();
+    fs::write(root.join("dist").join("old.html"), stale_marker).unwrap();
+    fs::create_dir_all(root.join("build")).unwrap();
+    fs::write(root.join("build").join("old.html"), stale_marker).unwrap();
+
+    let output = run_sync(root);
+    assert!(output.status.success());
+
+    // Root index.html got synced; dist/ and build/ pages were skipped.
+    let root_idx = fs::read_to_string(root.join("index.html")).unwrap();
+    assert!(root_idx.contains("<meta charset=\"utf-8\">"));
+
+    let dist_old = fs::read_to_string(root.join("dist/old.html")).unwrap();
+    assert!(
+        dist_old.contains("stale"),
+        "dist/ should not have been scanned"
+    );
+    let build_old = fs::read_to_string(root.join("build/old.html")).unwrap();
+    assert!(
+        build_old.contains("stale"),
+        "build/ should not have been scanned"
+    );
+}
+
+#[test]
+fn max_depth_caps_walk_depth() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    fs::write(root.join("fragments.toml"), "max_depth = 2\n").unwrap();
+
+    let frag_dir = root.join("fragments");
+    fs::create_dir_all(&frag_dir).unwrap();
+    fs::write(frag_dir.join("head.html"), "<meta charset=\"utf-8\">").unwrap();
+
+    let stale = "<!-- fragment:head -->\nstale\n<!-- /fragment:head -->";
+
+    // depth 1: root/index.html — should be scanned
+    fs::write(root.join("index.html"), stale).unwrap();
+    // depth 3: root/a/b/deep.html — beyond max_depth=2
+    fs::create_dir_all(root.join("a/b")).unwrap();
+    fs::write(root.join("a/b/deep.html"), stale).unwrap();
+
+    let output = run_sync(root);
+    assert!(output.status.success());
+
+    let shallow = fs::read_to_string(root.join("index.html")).unwrap();
+    assert!(shallow.contains("<meta charset=\"utf-8\">"));
+
+    let deep = fs::read_to_string(root.join("a/b/deep.html")).unwrap();
+    assert!(
+        deep.contains("stale"),
+        "deep page should not have been scanned"
+    );
+}
+
+#[test]
+fn max_depth_default_reaches_typical_blog_layout() {
+    // Blog posts at <root>/blog/<slug>/index.html sit at depth 3.
+    // Default max_depth must reach them.
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    setup_site(root, &[("head.html", "<meta>")], &[]);
+    fs::create_dir_all(root.join("blog/post-one")).unwrap();
+    fs::write(
+        root.join("blog/post-one/index.html"),
+        "<!-- fragment:head -->\nstale\n<!-- /fragment:head -->",
+    )
+    .unwrap();
+
+    let output = run_sync(root);
+    assert!(output.status.success());
+
+    let post = fs::read_to_string(root.join("blog/post-one/index.html")).unwrap();
+    assert!(
+        post.contains("<meta>"),
+        "blog post at depth 3 should sync under default max_depth"
+    );
+}
+
+#[test]
 fn custom_marker_prefix() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();

@@ -81,19 +81,20 @@ fn apply_fragments(html: &str, frags: &Fragments) -> Result<String> {
     Ok(result)
 }
 
-fn collect_html_files(scan_root: &Path, fragments_dir: &Path) -> Vec<PathBuf> {
-    let tools_dir = scan_root.join("tools");
+fn collect_html_files(
+    scan_root: &Path,
+    fragments_dir: &Path,
+    exclude_dirs: &[String],
+    max_depth: usize,
+) -> Vec<PathBuf> {
+    let excluded: Vec<PathBuf> = exclude_dirs.iter().map(|d| scan_root.join(d)).collect();
 
     WalkDir::new(scan_root)
-        .max_depth(5)
+        .max_depth(max_depth)
         .into_iter()
         .filter_entry(|e| {
             let p = e.path();
-            !p.starts_with(fragments_dir)
-                && !p.starts_with(&tools_dir)
-                && !p.starts_with(scan_root.join("node_modules"))
-                && !p.starts_with(scan_root.join("css"))
-                && !p.starts_with(scan_root.join("fonts"))
+            !p.starts_with(fragments_dir) && !excluded.iter().any(|ex| p.starts_with(ex))
         })
         .filter_map(Result::ok)
         .filter(|e| {
@@ -123,7 +124,12 @@ pub fn sync_all(root: &Path, config: &Config) -> Result<usize> {
     }
 
     let frags = Fragments::load(&fragments_dir, &config.marker_prefix)?;
-    let files = collect_html_files(&scan_root, &fragments_dir);
+    let files = collect_html_files(
+        &scan_root,
+        &fragments_dir,
+        &config.exclude_dirs,
+        config.max_depth,
+    );
     let mut updated = 0;
 
     for path in &files {
@@ -163,7 +169,12 @@ pub fn check_all(root: &Path, config: &Config) -> Result<Vec<CheckIssue>> {
     let fragments_dir = root.join(&config.fragments_dir);
     let scan_root = root.join(&config.target_dir);
     let frags = Fragments::load(&fragments_dir, &config.marker_prefix)?;
-    let files = collect_html_files(&scan_root, &fragments_dir);
+    let files = collect_html_files(
+        &scan_root,
+        &fragments_dir,
+        &config.exclude_dirs,
+        config.max_depth,
+    );
     let mut issues = Vec::new();
 
     for path in &files {

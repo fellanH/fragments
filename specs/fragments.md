@@ -93,9 +93,14 @@ Optional `fragments.toml` at the project root:
 ```toml
 marker_prefix = "fragment"     # prefix in <!-- PREFIX:name --> markers
 fragments_dir = "fragments"    # folder containing fragment source files
+target_dir    = "."            # where pages live, relative to project root
+exclude_dirs  = [              # subdirectories to skip when scanning for pages
+  "node_modules", "tools", "css", "fonts", "_assets",
+]
+max_depth     = 5              # max walk depth from target_dir
 ```
 
-Both fields are optional. Missing file = all defaults. Different projects can use different conventions — old projects can set `marker_prefix = "html-sync"` for backwards compatibility.
+All fields are optional. Missing file = all defaults. Different projects can use different conventions — old projects can set `marker_prefix = "html-sync"` for backwards compatibility, or extend `exclude_dirs` with project-specific folders (`dist`, `build`, `public`).
 
 ## Considered and deferred
 
