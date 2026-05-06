@@ -21,6 +21,30 @@ pub struct Config {
     /// Sites organized deeper than this are silently invisible — raise it
     /// if your tree is deeper than the default.
     pub max_depth: usize,
+    /// Extract subcommand configuration.
+    pub extract: ExtractConfig,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct ExtractConfig {
+    /// Custom candidate selectors for `fragments extract`. User entries
+    /// are APPENDED to the six built-in candidates (nav, footer, header,
+    /// .navbar, .site-header, .site-footer) — adding one doesn't remove
+    /// the others.
+    pub candidates: Vec<ExtractCandidate>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ExtractCandidate {
+    /// Fragment file basename produced by extract (`<name>.html`).
+    pub name: String,
+    /// CSS selector used to locate the element in the parsed DOM.
+    pub selector: String,
+    /// HTML tag name of the element. Used to walk the raw source when
+    /// inserting marker pairs (scraper normalizes attributes, so we can't
+    /// match by parsed `.html()` output against the source string).
+    pub tag: String,
 }
 
 impl Default for Config {
@@ -37,6 +61,7 @@ impl Default for Config {
                 "_assets".to_string(),
             ],
             max_depth: 5,
+            extract: ExtractConfig::default(),
         }
     }
 }

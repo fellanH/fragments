@@ -102,6 +102,19 @@ max_depth     = 5              # max walk depth from target_dir
 
 All fields are optional. Missing file = all defaults. Different projects can use different conventions — old projects can set `marker_prefix = "html-sync"` for backwards compatibility, or extend `exclude_dirs` with project-specific folders (`dist`, `build`, `public`).
 
+#### Custom extract candidates
+
+`fragments extract` ships with six built-in candidates (`<nav>`, `<footer>`, `<header>`, `.navbar`, `.site-header`, `.site-footer`). Sites with non-standard layouts add their own — user entries are **appended** to the built-ins, not a replacement:
+
+```toml
+[[extract.candidates]]
+name = "sidebar"           # fragment basename; produces fragments/sidebar.html
+selector = "aside.sidebar" # CSS selector to find the element in the parsed DOM
+tag = "aside"              # HTML tag name (used to walk the raw source)
+```
+
+All three fields are required per entry. `tag` is needed because scraper normalizes attributes — to insert markers into the original source, we walk same-tag spans and parse each candidate to find the byte-exact match.
+
 ## Considered and deferred
 
 ### Partials (one-shot includes) — deferred

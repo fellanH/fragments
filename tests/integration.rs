@@ -869,3 +869,83 @@ fn extract_idempotent_does_not_double_wrap() {
         "marker must not be duplicated"
     );
 }
+
+#[test]
+fn extract_picks_up_user_defined_candidate() {
+    // Site uses a custom <aside class="sidebar">. None of the six built-in
+    // candidates match. User adds an [[extract.candidates]] entry; extract
+    // should pick the sidebar up.
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    fs::write(
+        root.join("fragments.toml"),
+        r#"[[extract.candidates]]
+name = "sidebar"
+selector = "aside.sidebar"
+tag = "aside"
+"#,
+    )
+    .unwrap();
+
+    let sidebar = "<aside class=\"sidebar\"><h3>Links</h3><a href=\"/x\">x</a></aside>";
+    let page = |unique: &str| {
+        format!("<!DOCTYPE html><html><body>{sidebar}<main>{unique}</main></body></html>")
+    };
+
+    fs::write(root.join("a.html"), page("A")).unwrap();
+    fs::write(root.join("b.html"), page("B")).unwrap();
+
+    let output = run_extract(root);
+    assert!(output.status.success(), "extract failed: {:?}", output);
+
+    let frag = fs::read_to_string(root.join("fragments/sidebar.html")).unwrap();
+    assert!(
+        frag.contains("class=\"sidebar\""),
+        "sidebar fragment file missing or wrong:\n{frag}"
+    );
+
+    let a = fs::read_to_string(root.join("a.html")).unwrap();
+    assert!(
+        a.contains("<!-- fragment:sidebar -->"),
+        "page a missing sidebar marker:\n{a}"
+    );
+}
+
+#[test]
+fn extract_user_candidate_appends_to_builtins() {
+    // User adds a custom candidate; built-ins (e.g. <nav>) still fire.
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    fs::write(
+        root.join("fragments.toml"),
+        r#"[[extract.candidates]]
+name = "sidebar"
+selector = "aside.sidebar"
+tag = "aside"
+"#,
+    )
+    .unwrap();
+
+    let nav = "<nav><a href=\"/\">Home</a></nav>";
+    let sidebar = "<aside class=\"sidebar\"><h3>Links</h3></aside>";
+    let page = |unique: &str| {
+        format!("<!DOCTYPE html><html><body>{nav}{sidebar}<main>{unique}</main></body></html>")
+    };
+
+    fs::write(root.join("a.html"), page("A")).unwrap();
+    fs::write(root.join("b.html"), page("B")).unwrap();
+
+    let output = run_extract(root);
+    assert!(output.status.success());
+
+    assert!(
+        root.join("fragments/nav.html").exists(),
+        "built-in nav candidate should still fire"
+    );
+    assert!(
+        root.join("fragments/sidebar.html").exists(),
+        "user candidate should fire"
+    );
+}

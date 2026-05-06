@@ -6,11 +6,18 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-/// The tag name for each candidate (used for raw-text matching).
+/// A DOM block found shared across pages, ready to extract into a fragment.
 struct SharedBlock {
     name: String,
+    /// CSS selector used to find this element in parsed pages (preserved
+    /// so per-page presence checks use the original selector, not a
+    /// hardcoded mapping from tag back to class).
+    selector: String,
+    /// HTML tag name (used for raw-source span matching).
     tag: String,
-    content: String, // scraper's html() output (for the fragment file)
+    /// Scraper's `.html()` output — the canonical content written to the
+    /// fragment file and compared against on per-page matching.
+    content: String,
 }
 
 /// Find the source span of the FIRST top-level `<tag ...>...</tag>` element
@@ -121,19 +128,23 @@ pub fn extract_fragments(root: &Path, config: &Config) -> Result<usize> {
         .filter_map(|p| fs::read_to_string(p).ok().map(|c| (p.clone(), c)))
         .collect();
 
-    // Candidate selectors: (fragment name, CSS selector, tag name)
-    let candidates: &[(&str, &str, &str)] = &[
-        ("nav", "nav", "nav"),
-        ("footer", "footer", "footer"),
-        ("header", "header", "header"),
-        ("navbar", ".navbar", "div"),
-        ("site-header", ".site-header", "div"),
-        ("site-footer", ".site-footer", "div"),
+    // Candidate selectors: built-ins + any user-provided. User entries
+    // append to defaults — adding one custom doesn't lose the built-ins.
+    let mut candidates: Vec<(String, String, String)> = vec![
+        ("nav".into(), "nav".into(), "nav".into()),
+        ("footer".into(), "footer".into(), "footer".into()),
+        ("header".into(), "header".into(), "header".into()),
+        ("navbar".into(), ".navbar".into(), "div".into()),
+        ("site-header".into(), ".site-header".into(), "div".into()),
+        ("site-footer".into(), ".site-footer".into(), "div".into()),
     ];
+    for c in &config.extract.candidates {
+        candidates.push((c.name.clone(), c.selector.clone(), c.tag.clone()));
+    }
 
     let mut shared_blocks: Vec<SharedBlock> = Vec::new();
 
-    for (name, sel_str, tag_name) in candidates {
+    for (name, sel_str, tag_name) in &candidates {
         let sel = match Selector::parse(sel_str) {
             Ok(s) => s,
             Err(_) => continue,
@@ -157,8 +168,9 @@ pub fn extract_fragments(root: &Path, config: &Config) -> Result<usize> {
         if let Some((content, count)) = html_to_count.into_iter().max_by_key(|(_, v)| *v) {
             if count >= 2 {
                 shared_blocks.push(SharedBlock {
-                    name: name.to_string(),
-                    tag: tag_name.to_string(),
+                    name: name.clone(),
+                    selector: sel_str.clone(),
+                    tag: tag_name.clone(),
                     content,
                 });
             }
@@ -202,18 +214,7 @@ pub fn extract_fragments(root: &Path, config: &Config) -> Result<usize> {
             }
 
             // Check with scraper that this page has the shared block
-            let selector_str = if block.tag == "div" {
-                // For class-based candidates, use the original CSS selector
-                match block.name.as_str() {
-                    "navbar" => ".navbar",
-                    "site-header" => ".site-header",
-                    "site-footer" => ".site-footer",
-                    _ => &block.tag,
-                }
-            } else {
-                &block.tag
-            };
-            let sel = match Selector::parse(selector_str) {
+            let sel = match Selector::parse(&block.selector) {
                 Ok(s) => s,
                 Err(_) => continue,
             };
