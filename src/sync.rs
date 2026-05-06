@@ -81,7 +81,7 @@ fn apply_fragments(html: &str, frags: &Fragments) -> Result<String> {
     Ok(result)
 }
 
-fn collect_html_files(
+pub(crate) fn collect_html_files(
     scan_root: &Path,
     fragments_dir: &Path,
     exclude_dirs: &[String],
@@ -263,4 +263,33 @@ fn validate_markers(html: &str, prefix: &str) -> Vec<Unpaired> {
         unpaired.push(Unpaired::Open(name));
     }
     unpaired
+}
+
+/// Return the set of fragment names referenced in `html` via opening
+/// markers (`<!-- prefix:NAME -->`). Used by `list` and `doctor` to map
+/// fragment-to-page references and detect orphans.
+pub fn referenced_fragment_names(html: &str, prefix: &str) -> std::collections::HashSet<String> {
+    let open_prefix = format!("<!-- {prefix}:");
+    let suffix = " -->";
+    let mut names = std::collections::HashSet::new();
+    let mut idx = 0;
+    while idx < html.len() {
+        let Some(rel) = html[idx..].find(&open_prefix) else {
+            break;
+        };
+        let name_start = idx + rel + open_prefix.len();
+        let Some(suffix_off) = html[name_start..].find(suffix) else {
+            break;
+        };
+        let raw_name = html[name_start..name_start + suffix_off].trim();
+        if !raw_name.is_empty()
+            && raw_name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            names.insert(raw_name.to_string());
+        }
+        idx = name_start + suffix_off + suffix.len();
+    }
+    names
 }

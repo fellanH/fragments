@@ -1,11 +1,11 @@
 use anyhow::Result;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
 const CONFIG_FILE: &str = "fragments.toml";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
     pub marker_prefix: String,
@@ -25,7 +25,7 @@ pub struct Config {
     pub extract: ExtractConfig,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct ExtractConfig {
     /// Custom candidate selectors for `fragments extract`. User entries
@@ -35,7 +35,7 @@ pub struct ExtractConfig {
     pub candidates: Vec<ExtractCandidate>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ExtractCandidate {
     /// Fragment file basename produced by extract (`<name>.html`).
     pub name: String,

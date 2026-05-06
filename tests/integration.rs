@@ -870,6 +870,191 @@ fn extract_idempotent_does_not_double_wrap() {
     );
 }
 
+// --- List command ---
+
+fn run_list(dir: &Path) -> std::process::Output {
+    std::process::Command::new(env!("CARGO_BIN_EXE_fragments"))
+        .arg(dir.to_str().unwrap())
+        .arg("list")
+        .output()
+        .expect("failed to run fragments")
+}
+
+#[test]
+fn list_shows_fragments_with_reference_counts() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    setup_site(
+        root,
+        &[
+            ("nav.html", "<nav>Nav</nav>"),
+            ("footer.html", "<footer>F</footer>"),
+            ("orphan.html", "<p>not used</p>"),
+        ],
+        &[
+            (
+                "a.html",
+                "<!-- fragment:nav -->old<!-- /fragment:nav -->\n<!-- fragment:footer -->old<!-- /fragment:footer -->",
+            ),
+            (
+                "b.html",
+                "<!-- fragment:footer -->old<!-- /fragment:footer -->",
+            ),
+        ],
+    );
+
+    let output = run_list(root);
+    assert!(output.status.success(), "list failed: {:?}", output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("nav"));
+    assert!(stdout.contains("footer"));
+    assert!(stdout.contains("orphan"));
+    assert!(stdout.contains("(unreferenced)"), "stdout: {stdout}");
+    assert!(stdout.contains("scanned 2 page(s)"));
+}
+
+// --- Config command ---
+
+fn run_config(dir: &Path) -> std::process::Output {
+    std::process::Command::new(env!("CARGO_BIN_EXE_fragments"))
+        .arg(dir.to_str().unwrap())
+        .arg("config")
+        .output()
+        .expect("failed to run fragments")
+}
+
+#[test]
+fn config_print_shows_defaults_when_no_toml() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    fs::create_dir_all(root.join("fragments")).unwrap();
+
+    let output = run_config(root);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("marker_prefix = \"fragment\""));
+    assert!(stdout.contains("fragments_dir = \"fragments\""));
+    assert!(stdout.contains("max_depth = 5"));
+    assert!(stdout.contains("node_modules"));
+}
+
+#[test]
+fn config_print_reflects_overrides() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+    fs::create_dir_all(root.join("frags")).unwrap();
+    fs::write(
+        root.join("fragments.toml"),
+        "marker_prefix = \"sync\"\nfragments_dir = \"frags\"\nmax_depth = 9\n",
+    )
+    .unwrap();
+
+    let output = run_config(root);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(stdout.contains("marker_prefix = \"sync\""));
+    assert!(stdout.contains("fragments_dir = \"frags\""));
+    assert!(stdout.contains("max_depth = 9"));
+}
+
+// --- Doctor command ---
+
+fn run_doctor(dir: &Path) -> std::process::Output {
+    std::process::Command::new(env!("CARGO_BIN_EXE_fragments"))
+        .arg(dir.to_str().unwrap())
+        .arg("doctor")
+        .output()
+        .expect("failed to run fragments")
+}
+
+#[test]
+fn doctor_clean_site_reports_no_issues() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    setup_site(
+        root,
+        &[("nav.html", "<nav>Nav</nav>")],
+        &[(
+            "a.html",
+            "<!-- fragment:nav -->\n<nav>Nav</nav>\n<!-- /fragment:nav -->",
+        )],
+    );
+
+    let _ = run_sync(root);
+    let output = run_doctor(root);
+    assert!(output.status.success(), "doctor failed: {:?}", output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("no issues found"));
+}
+
+#[test]
+fn doctor_reports_orphan_fragment() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    setup_site(
+        root,
+        &[
+            ("nav.html", "<nav>Nav</nav>"),
+            ("orphan.html", "<p>nobody uses me</p>"),
+        ],
+        &[("a.html", "<!-- fragment:nav -->old<!-- /fragment:nav -->")],
+    );
+
+    let output = run_doctor(root);
+    assert!(
+        !output.status.success(),
+        "doctor should exit nonzero on issues"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("orphan fragment"), "stdout: {stdout}");
+    assert!(stdout.contains("orphan.html"));
+}
+
+#[test]
+fn doctor_reports_orphan_marker() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    // Page references "missing" but no fragments/missing.html exists.
+    setup_site(
+        root,
+        &[("nav.html", "<nav>Nav</nav>")],
+        &[(
+            "a.html",
+            "<!-- fragment:missing -->stale<!-- /fragment:missing -->",
+        )],
+    );
+
+    let output = run_doctor(root);
+    assert!(!output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("orphan marker"), "stdout: {stdout}");
+    assert!(stdout.contains("missing"));
+}
+
+#[test]
+fn doctor_reports_unpaired_marker() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    setup_site(
+        root,
+        &[("nav.html", "<nav>Nav</nav>")],
+        &[("a.html", "<!-- fragment:nav -->\nno close marker\n")],
+    );
+
+    let output = run_doctor(root);
+    assert!(!output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("unpaired open"), "stdout: {stdout}");
+}
+
 #[test]
 fn extract_picks_up_user_defined_candidate() {
     // Site uses a custom <aside class="sidebar">. None of the six built-in

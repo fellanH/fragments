@@ -260,6 +260,10 @@ The binary scans `*.html` at root and replaces every marker region with the corr
 | `fragments watch` | Sync, then watch `fragments/` for changes |
 | `fragments check` | Dry-run: exit 1 if any page is stale or has unpaired markers (CI/pre-commit) |
 | `fragments init <file>` | Create new page with marker pairs for all fragments |
+| `fragments extract` | Detect duplicated DOM blocks across pages, extract to fragments/, insert markers |
+| `fragments list` | List every fragment and how many pages reference it |
+| `fragments config` | Print the effective config (defaults merged with `fragments.toml`) |
+| `fragments doctor` | Health check: surface orphan fragments, orphan markers, unpaired markers; exit 1 on issues |
 
 ## Design principles
 

@@ -1,6 +1,8 @@
 mod config;
+mod doctor;
 mod extract;
 mod init;
+mod list;
 mod sync;
 mod watch;
 
@@ -13,7 +15,12 @@ use std::path::PathBuf;
 #[command(
     name = "fragments",
     version,
-    about = "Sync shared fragments across files"
+    about = "Sync shared fragments across files",
+    long_about = "fragments keeps marked regions in target files identical to source \
+files in `fragments/`. Every file is valid, self-contained content at all times. \
+\n\nMarkers are HTML comments: `<!-- fragment:NAME -->...<!-- /fragment:NAME -->`. \
+Edit `fragments/NAME.html`, run `fragments sync`, every page with the marker pair updates. \
+\n\nConfig lives in `fragments.toml` (optional). See specs/fragments.md for full schema."
 )]
 struct Cli {
     /// Project root (contains fragments/ and target files)
@@ -30,7 +37,7 @@ enum Cmd {
     Sync,
     /// Watch fragments/ for changes, sync on save
     Watch,
-    /// Dry-run: exit 1 if any file has stale markers
+    /// Dry-run: exit 1 if any file is stale or has unpaired markers
     Check,
     /// Create a new HTML page with marker pairs for all fragments
     Init {
@@ -39,6 +46,12 @@ enum Cmd {
     },
     /// Scan pages, detect shared blocks, extract to fragments/ and insert markers
     Extract,
+    /// List every fragment and how many pages reference it
+    List,
+    /// Print the effective config (defaults merged with fragments.toml)
+    Config,
+    /// Health check: report orphan fragments, orphan markers, unpaired markers
+    Doctor,
 }
 
 fn main() -> Result<()> {
@@ -87,6 +100,19 @@ fn main() -> Result<()> {
             let n = extract::extract_fragments(&root, &config)?;
             if n > 0 {
                 println!("fragments: extraction complete, {n} page(s) updated");
+            }
+        }
+        Cmd::List => {
+            list::list_fragments(&root, &config)?;
+        }
+        Cmd::Config => {
+            let toml = toml::to_string_pretty(&config).context("serializing config")?;
+            print!("{toml}");
+        }
+        Cmd::Doctor => {
+            let issues = doctor::run_doctor(&root, &config)?;
+            if issues > 0 {
+                std::process::exit(1);
             }
         }
     }
