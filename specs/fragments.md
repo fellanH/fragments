@@ -115,6 +115,53 @@ tag = "aside"              # HTML tag name (used to walk the raw source)
 
 All three fields are required per entry. `tag` is needed because scraper normalizes attributes — to insert markers into the original source, we walk same-tag spans and parse each candidate to find the byte-exact match.
 
+#### Recommended excludes for common site conventions
+
+Defaults cover asset/build folders that most sites have (`node_modules`, `css`, `fonts`, `_assets`). Per-site additions worth considering, depending on layout:
+
+| Folder | Why exclude |
+|---|---|
+| `backups/` | Date-stamped prior crawls. If a backup page contains markers, sync will silently rewrite it against current fragments — destroying the as-of snapshot |
+| `mockups/` | Design exploration drafts. Same risk as backups when copied from a marked-up live page |
+| `_audit/` | One-off audit artifacts |
+| `dist/`, `build/`, `public/` | Generated output of an upstream build (if any) |
+| `archive/`, `_archive/` | Frozen historical pages |
+
+The defaults stay conservative — only universal asset folders. Sites that use any of the above should add to their own `fragments.toml`:
+
+```toml
+exclude_dirs = ["node_modules", "tools", "css", "fonts", "_assets", "backups", "mockups", "_audit"]
+```
+
+## Patterns
+
+### Shared-subset extraction (head with per-page title/description)
+
+When a region is *partially* shared — most of it identical across pages, but a few values per-page — extract only the shared subset. Don't try to share the whole region.
+
+**Example: HTML `<head>`.** Shared across pages: charset, viewport, font preloads, stylesheet links, OG image base URL. Per-page: `<title>`, `<meta description>`, canonical URL, page-specific OG metadata.
+
+A flat fragment can't hold per-page values. The right shape:
+
+```html
+<!-- in every page's <head>: -->
+<head>
+  <title>About — SiteCo</title>                              <!-- per-page, inline -->
+  <meta name="description" content="The about page...">      <!-- per-page, inline -->
+
+  <!-- fragment:head-assets -->
+  <meta charset="utf-8">                                     <!-- shared, synced -->
+  <meta name="viewport" content="width=device-width">
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="preload" href="/fonts/inter.woff2" as="font">
+  <!-- /fragment:head-assets -->
+</head>
+```
+
+Edit `fragments/head-assets.html` once; every page's shared head subset updates. Per-page values stay inline, hand-edited where they belong.
+
+This pattern resolves the "fragments can't do variables" friction without breaking the file-is-truth invariant. Apply it whenever a region has the shape `[mostly-shared] + [a few per-page values]`.
+
 ## Considered and deferred
 
 ### Partials (one-shot includes) — deferred
