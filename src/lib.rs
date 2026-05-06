@@ -10,7 +10,7 @@
 //! - [`check_all`] — report stale, malformed, and duplicate markers
 //! - [`Fragments`] — load fragment source files for direct manipulation
 //! - [`referenced_fragment_names`] — extract fragment names referenced by a page
-//! - [`watch::run`] — long-running watch loop
+//! - [`watch::run`] / [`watch::run_with`] — long-running watch loop (with optional hooks)
 //! - [`list::list_fragments`] — print fragment-to-page reference map
 //! - [`doctor::run_doctor`] — health checks (orphans, unpaired, duplicates)
 

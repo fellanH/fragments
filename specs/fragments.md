@@ -51,7 +51,7 @@ fragments::sync_all_with(&root, &config, &hooks)?;
 
 Hooks chain sequentially. The first hook receives the canonical fragment content; each subsequent hook receives the prior hook's output. Errors propagate via `?`.
 
-For consistency, consumers calling `sync_all_with(hooks)` MUST also call `check_all_with(hooks)` — otherwise CI staleness reports will be wrong (check would compare against unhooked content while sync writes hooked content).
+For consistency, consumers calling `sync_all_with(hooks)` MUST also call `check_all_with(hooks)` and `watch::run_with(hooks)` — otherwise CI staleness reports or reactive resyncs will produce different output than initial sync.
 
 ## Sibling: pagekit
 
