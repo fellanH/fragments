@@ -1,6 +1,8 @@
 # fragments
 
-Single Rust binary that syncs shared text fragments across files. One primitive — marked regions kept identical to source files in `fragments/`. Every file is valid, self-contained content at all times.
+Single Rust binary that syncs marker-region content across files. One primitive — marked regions kept identical to source files in `fragments/`. Format-agnostic: works on any text file with comment-pair syntax (HTML, CSS, JS, MD, YAML, etc.). Every file is valid in its native format at all times.
+
+For HTML-specific helpers (page scaffolding, DOM-aware extraction, link integrity), see the sibling [`pagekit`](../pagekit) workspace which composes fragments core.
 
 Tool workspace. Worker-tier per `harness/rules/omni/tier-architecture.md`.
 
@@ -28,24 +30,26 @@ fragments extract        # detect duplicate blocks, extract to _fragments/, inse
 
 This binary does:
 
-- Replaces marker-region content in `*.html` files with `fragments/<name>.html` source
+- Replaces marker-region content in target files with `fragments/<name>.<ext>` source (format-agnostic)
 - Watches `fragments/` for changes and re-syncs on save
-- Reports stale files with non-zero exit (CI usable)
-- Scaffolds new pages with marker pairs for every existing fragment
-- Extracts duplicated blocks across pages into reusable fragments
+- Reports stale, malformed, or duplicate markers with non-zero exit (CI usable)
+- Lists fragments and their references; doctor surfaces orphans
+- (HTML-specific, moves to pagekit in Stage 2) Scaffolds new pages via `init`
+- (HTML-specific, moves to pagekit in Stage 2) Extracts shared DOM blocks via `extract`
 
 This binary does NOT:
 
 - Run a build pipeline, generate files from a schema, or render templates
-- Provide a GUI, CMS, or hosting layer
+- Provide format-specific helpers (HTML scaffolding, DOM-aware extraction) — see pagekit
 - Touch content outside marker pairs or files outside the project root
 - Resolve nested fragments (deferred — see `specs/fragments.md`)
 - Apply variables, conditionals, partials, or loops (deferred by design)
 
 ## Skills in scope
 
-- The five subcommands above
-- Customization via `fragments.toml` (`marker_prefix`, `fragments_dir`, `target_dir`)
+- The 8 subcommands above
+- Customization via `fragments.toml` (`marker_prefix`, `fragments_dir`, `target_dir`, `exclude_dirs`, `max_depth`)
+- HTML-specific config (`[[extract.candidates]]`) is here at Stage 1; moves to pagekit at Stage 2
 
 ## Tools in scope
 
@@ -62,9 +66,9 @@ This binary does NOT:
 
 ## Rails
 
-- Every output file must be valid HTML at every step. No template syntax, no placeholder leakage, no source/output split.
+- Every output file stays valid in its native format at every step. No template syntax, no placeholder leakage, no source/output split.
 - Files are only written when content actually changes (byte comparison). Diffs stay minimal.
-- Marker pairs are standard HTML comments. They never appear in rendered output.
+- Marker pairs are standard comments in the file's format (HTML `<!-- -->`, CSS `/* */`, etc.). They never appear in rendered output.
 - Backwards-compat: legacy `marker_prefix = "html-sync"` still works via config.
 
 ## .mcp.json

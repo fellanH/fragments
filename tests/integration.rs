@@ -967,7 +967,10 @@ fn config_print_shows_defaults_when_no_toml() {
     assert!(stdout.contains("marker_prefix = \"fragment\""));
     assert!(stdout.contains("fragments_dir = \"fragments\""));
     assert!(stdout.contains("max_depth = 5"));
-    assert!(stdout.contains("node_modules"));
+    // fragments core has no built-in exclude defaults — config-over-convention.
+    // Format-specific defaults (e.g. css/fonts for HTML sites) live in pagekit
+    // or per-project fragments.toml.
+    assert!(stdout.contains("exclude_dirs = []"));
 }
 
 #[test]

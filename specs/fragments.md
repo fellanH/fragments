@@ -1,29 +1,47 @@
-# fragments — shared content sync for static files
+# fragments — marker-region sync for any text format
 
-## Problem
+## What fragments is
 
-HTML has no `#include`, no way to share markup across files. Every modern web framework exists primarily to paper over this gap. But frameworks introduce build steps, runtime JS, intermediate formats (JSX, Astro, Svelte), `node_modules`, version conflicts, and an abstraction layer between what you write and what gets served.
+A single Rust binary that syncs marker-region content across files. The primitive: marked regions in target files are kept identical to source files in `fragments/`. Format-agnostic — works on any text file with comment-pair syntax.
 
-For static sites — marketing pages, documentation, portfolios — this is a terrible trade. You don't need a virtual DOM or hydration. You need shared headers, reusable sections, and a way to update a nav link in one place and have it propagate across thirty pages.
+```html
+<!-- fragment:head -->
+...content replaced on sync...
+<!-- /fragment:head -->
+```
 
-**For AI agents, frameworks are an even worse trade.** An agent managing a 50-page marketing site needs to:
-- Update a nav link across every page (bulk mutation)
-- Change a price that appears in six places (consistency)
-- Add a new testimonial to three pages at once (data-driven content)
-- Swap a CTA across the site without touching page-specific content (scoped edits)
-- Understand what it's looking at without parsing JSX/TSX/Astro/MDX (legibility)
+```css
+/* fragment:reset */
+...
+/* /fragment:reset */
+```
 
-With React, an agent must understand component trees, props, context, imports, build pipelines, and framework conventions. With plain HTML, an agent reads a file and sees exactly what the browser sees — but it has no way to make a change in one place and have it propagate.
+```yaml
+# fragment:auth-config
+...
+# /fragment:auth-config
+```
 
-This tool gives agents (and humans) both: **the legibility of raw HTML and the leverage of shared abstractions.**
+Every file is valid in its native format at all times — before sync, after sync, mid-edit. No template state, no placeholder syntax, no source-vs-output distinction.
 
-## Vision
+## Why it exists
 
-A single Rust binary that closes HTML's gaps without changing the format. The input is `.html` files. The output is `.html` files. There is no intermediate representation, no build artifact, no framework. The tool **syncs shared content across files** — you define a fragment once, mark where it belongs, and the tool keeps every page consistent.
+Bulk content management without templates. An agent (or human) edits one file in `fragments/`, runs `fragments sync`, and the change propagates across every file with the matching marker pair. No build step, no intermediate format, no framework.
 
-Every file is valid, self-contained HTML at all times — before sync, after sync, mid-edit. There is no template state, no placeholder syntax, no source-vs-output distinction. The output format is the input format. You can stop using the tool at any time and keep your files.
+The original motivating use case was vanilla HTML websites — managing nav links, shared headers, pricing across many pages without reaching for a JS framework. That use case is now best served by [`pagekit`](../pagekit), which composes fragments core and adds HTML-specific helpers (page scaffolding, DOM-aware extraction). Fragments itself stays general — useful for any text format with comment-pair syntax.
 
-The tool may extend beyond HTML in the future — the sync primitive works on any text file that supports comment markers.
+## Sibling: pagekit
+
+`pagekit` is the opinionated layer for vanilla HTML site management. It depends on `fragments` for the sync primitive and adds:
+
+- `init` — scaffold new HTML pages with semantic marker placement
+- `extract` — detect shared DOM blocks via CSS selectors and extract them
+- HTML-aware health checks (link integrity, framework-export anomalies)
+- Recommended config defaults for static-site conventions
+
+Use `fragments` if your need is text sync across any format. Use `pagekit` if you're managing a vanilla HTML site.
+
+> **Stage 1 note (2026-05-06):** `init` and `extract` currently live in fragments. Stage 2 of the fork moves them into pagekit; Stage 1 is documentation reframing only.
 
 ## Agent-first design
 
@@ -271,10 +289,9 @@ If the sync-only model proves insufficient for a real use case that can't be sol
 
 ## What this is NOT
 
-- **Not a framework.** No runtime JS, no virtual DOM, no hydration, no client-side routing.
-- **Not a template engine.** No variables, no loops, no expressions, no placeholder syntax. Every file is valid HTML at all times. See "Considered and deferred" for why.
-- **Not a CMS.** The tool doesn't provide a GUI, a database, or an API. You edit HTML files directly.
-- **Not a site generator.** It doesn't create files from a schema. It transforms existing files in place. You own the file tree.
+- **Not a template engine.** No variables, no loops, no expressions, no placeholder syntax. Every file is valid in its native format at all times. See "Considered and deferred" for why.
+- **Not a build system.** It transforms existing files in place. You own the file tree.
+- **Not format-aware.** Files are treated as text streams with marker pairs. For format-specific operations (HTML scaffolding, DOM-aware extraction, link integrity), see [`pagekit`](../pagekit).
 - **Not a human-first DX tool that agents happen to use.** The primary user is an AI agent. The design choices optimize for agent legibility, predictable file I/O, small error surfaces, and one-command propagation. Humans benefit from the same properties, but the design is agent-first.
 
 ## Architecture

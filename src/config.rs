@@ -53,13 +53,11 @@ impl Default for Config {
             marker_prefix: "fragment".to_string(),
             fragments_dir: "fragments".to_string(),
             target_dir: ".".to_string(),
-            exclude_dirs: vec![
-                "node_modules".to_string(),
-                "tools".to_string(),
-                "css".to_string(),
-                "fonts".to_string(),
-                "_assets".to_string(),
-            ],
+            // Format-agnostic primitive: no built-in defaults. Each
+            // consumer declares the dirs they want skipped. Website-shaped
+            // defaults (`css`, `fonts`, `_assets`, `dist`, `build`, etc.)
+            // belong in pagekit's config layer or per-project fragments.toml.
+            exclude_dirs: Vec::new(),
             max_depth: 5,
             extract: ExtractConfig::default(),
         }

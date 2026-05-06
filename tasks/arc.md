@@ -1,85 +1,37 @@
 # fragments
 
+Marker-region sync for any text format with comment-pair syntax. 40 tests passing.
+
 ## Active arc
 
-Harden fragments through real-site usage. felixhellstrom.com
-(`~/omni/websites/felixhellstrom.com`) is the canonical consumer:
-21 pages, 15 fragments, integrated since 2026-05-05, currently sync
-clean against the latest binary.
+**Stage 1 of fragments → pagekit fork.** Reframing fragments as a format-agnostic primitive; HTML-specific helpers (`init`, `extract`, framework profiles) move to a new [`pagekit`](../pagekit) workspace.
 
-In parallel: lift hardcoded values into `fragments.toml` so any project
-can adopt fragments without source patches. Goal — drop `fragments.toml`
-+ run `fragments init` + run `fragments sync`, no source edits required.
+Stage 1 (this commit): documentation only. Spec preamble rewritten, AGENTS.md neutralized, default `exclude_dirs` cleared (config-over-convention). Code unchanged — `init` and `extract` still ship in the fragments binary.
 
-## Workstream A — felixhellstrom.com as living testbed
+Stage 2 (next): code split. `lib.rs` in fragments exposes public API; `init.rs`/`extract.rs` move into pagekit; `[[extract.candidates]]` config moves with them.
 
-Status: integrated. Site at `~/omni/websites/felixhellstrom.com` runs on
-fragments. Workstream is now ongoing usage, not initial wiring.
+Stage 3 (later): pagekit's `extract` migrates from `scraper` to `lol_html` (cleaner source-rewrite, no attribute-normalization hack).
 
-- Capture friction inline as it surfaces (vault tag: `bucket:fragments,friction`)
-- Each friction entry triggers: ship a fix, kill with rationale, or queue
-  with explicit trigger per `harness/rules/workflow/capture-or-kill.md`
-- Watch for: extract heuristic gaps (site uses `<header>`/`<footer>` so
-  default candidates work, but custom layouts will surface), unmarked
-  duplicates, watch-mode latency, init template pain points
-
-## Workstream B — third-party consumability via settings
-
-Lift hardcoded values into `fragments.toml`. Three surfaces are the
-current friction for new projects:
-
-| Currently hardcoded | Symptom |
-|---|---|
-| Excluded scan dirs (`tools/ node_modules/ css/ fonts/ _assets/`) | Project with `dist/`, `build/`, or custom asset dirs gets wrong scan scope |
-| Walk depth `5` | Sites organized at depth ≥ 5 silently invisible |
-| Extract candidate list (6 selectors) | Site using `.brand-bar` or `.menu-primary` instead of `.navbar` gets nothing extracted |
-
-### P0 — config replaces hardcoded values
-- `exclude_dirs: Vec<String>` in `fragments.toml`, replaces hardcoded list
-- `max_depth: usize` with sensible default
-
-### P1 — extract works for arbitrary layouts
-- `[[extract.candidates]]` table: list of `(name, selector)` pairs
-- Built-in defaults still apply if section absent
-
-### P2 — discoverability
-- `fragments list` — show fragments + which pages reference each
-- `fragments config --print` — dump effective config (defaults + overrides)
-- `fragments doctor` — health report (unmarked duplicates, orphans)
-- Expand `--help`, ship example `fragments.toml` in `init`
-
-### P3 — distribution
-- `cargo publish` to crates.io once config surface is stable enough to
-  commit to semver
-
-## Done-when
-
-- felixhellstrom.com runs on fragments with no source patches needed when
-  the site grows or layout shifts (Workstream A signal)
-- One unfamiliar-with-source project can adopt fragments via
-  `cargo install` + `fragments.toml` and run end-to-end (Workstream B)
-- Friction backlog from real use is processed
-
-## Open questions
-
-- **Default `fragments_dir`**: spec says `fragments`, code says `fragments`,
-  felixhellstrom (only real consumer) explicitly sets `_fragments`. If a
-  second site adopts and also picks `_fragments`, the spec default is
-  wrong. Revisit once n=2.
+felixhellstrom.com remains the canonical real-site consumer for the HTML use case. Will migrate to the pagekit binary once Stage 2 ships.
 
 ## Decisions
 
-- Single primitive: sync fragments. No variables, no partials, no template syntax.
-- Agent-first design.
-- Default marker prefix `fragment`, default folder `fragments/`.
-- Direct `fs::write` (truncation risk accepted; recovery is `sync` re-run + `check`).
+- Format-agnostic primitive. No HTML-specific opinionation in fragments core.
+- pagekit owns HTML/website-specific surface; depends on fragments crate.
+- Default `exclude_dirs` is empty — config over convention.
+- Direct `fs::write` (truncation risk accepted; recovery is sync re-run + check).
+- Single-binary CLI in pagekit re-exposes fragments commands; agent UX is one binary, one CLI.
+
+## Open questions
+
+- Default `fragments_dir`: spec says `fragments`, felixhellstrom uses `_fragments`. Wait for n=2 confirmation before flipping default.
 
 ## Backlog
 
-- Beyond HTML (CSS/JS/MD via per-extension comment syntax) — deferred until
-  a real cross-format need surfaces during Workstream A
-- Nested fragments — deferred per spec
+- **Stage 2** (code split): `lib.rs` in fragments exposes core APIs; `init.rs`/`extract.rs` move to pagekit; pagekit binary builds and tests.
+- **Stage 3** (lol_html): rewrite `extract` on `lol_html` in pagekit.
+- **Far future** (only if a non-HTML consumer pulls): comment-syntax-per-extension config so `/* */`, `# `, `// `, etc. work natively without setting `marker_prefix`.
 
 ## Blocked
 
-Nothing
+Nothing.
