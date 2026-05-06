@@ -161,8 +161,22 @@ fn sync_one(path: &Path, frags: &Fragments) -> Result<bool> {
 
 pub enum CheckIssue {
     Stale(PathBuf),
-    UnpairedOpen { path: PathBuf, name: String },
-    UnpairedClose { path: PathBuf, name: String },
+    UnpairedOpen {
+        path: PathBuf,
+        name: String,
+    },
+    UnpairedClose {
+        path: PathBuf,
+        name: String,
+    },
+    /// Same fragment name has more than one open+close pair in a single
+    /// page. Only the first pair gets synced (`replace_marker_region` uses
+    /// `find` which returns the first match), so subsequent pairs silently
+    /// drift stale relative to the first.
+    DuplicatePair {
+        path: PathBuf,
+        name: String,
+    },
 }
 
 pub fn check_all(root: &Path, config: &Config) -> Result<Vec<CheckIssue>> {
@@ -181,13 +195,17 @@ pub fn check_all(root: &Path, config: &Config) -> Result<Vec<CheckIssue>> {
         let current = fs::read_to_string(path)?;
         let rel = path.strip_prefix(root).unwrap_or(path).to_path_buf();
 
-        for unpaired in validate_markers(&current, &config.marker_prefix) {
-            match unpaired {
-                Unpaired::Open(name) => issues.push(CheckIssue::UnpairedOpen {
+        for issue in validate_markers(&current, &config.marker_prefix) {
+            match issue {
+                MarkerIssue::UnpairedOpen(name) => issues.push(CheckIssue::UnpairedOpen {
                     path: rel.clone(),
                     name,
                 }),
-                Unpaired::Close(name) => issues.push(CheckIssue::UnpairedClose {
+                MarkerIssue::UnpairedClose(name) => issues.push(CheckIssue::UnpairedClose {
+                    path: rel.clone(),
+                    name,
+                }),
+                MarkerIssue::DuplicatePair(name) => issues.push(CheckIssue::DuplicatePair {
                     path: rel.clone(),
                     name,
                 }),
@@ -203,12 +221,13 @@ pub fn check_all(root: &Path, config: &Config) -> Result<Vec<CheckIssue>> {
     Ok(issues)
 }
 
-enum Unpaired {
-    Open(String),
-    Close(String),
+enum MarkerIssue {
+    UnpairedOpen(String),
+    UnpairedClose(String),
+    DuplicatePair(String),
 }
 
-fn validate_markers(html: &str, prefix: &str) -> Vec<Unpaired> {
+fn validate_markers(html: &str, prefix: &str) -> Vec<MarkerIssue> {
     let open_prefix = format!("<!-- {prefix}:");
     let close_prefix = format!("<!-- /{prefix}:");
     let suffix = " -->";
@@ -249,20 +268,32 @@ fn validate_markers(html: &str, prefix: &str) -> Vec<Unpaired> {
     }
 
     let mut stack: Vec<String> = Vec::new();
-    let mut unpaired = Vec::new();
+    let mut completed: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut issues = Vec::new();
     for (is_open, name) in markers {
         if is_open {
             stack.push(name);
         } else if stack.last() == Some(&name) {
             stack.pop();
+            *completed.entry(name).or_insert(0) += 1;
         } else {
-            unpaired.push(Unpaired::Close(name));
+            issues.push(MarkerIssue::UnpairedClose(name));
         }
     }
     for name in stack {
-        unpaired.push(Unpaired::Open(name));
+        issues.push(MarkerIssue::UnpairedOpen(name));
     }
-    unpaired
+    // Each name should have at most one completed pair per file. More
+    // than one means only the first pair gets synced (silent drift).
+    let mut dup_names: Vec<String> = completed
+        .into_iter()
+        .filter_map(|(name, count)| if count > 1 { Some(name) } else { None })
+        .collect();
+    dup_names.sort();
+    for name in dup_names {
+        issues.push(MarkerIssue::DuplicatePair(name));
+    }
+    issues
 }
 
 /// Return the set of fragment names referenced in `html` via opening

@@ -88,6 +88,11 @@ fn main() -> Result<()> {
                         sync::CheckIssue::UnpairedClose { path, name } => {
                             eprintln!("unpaired close marker '{}' in {}", name, path.display())
                         }
+                        sync::CheckIssue::DuplicatePair { path, name } => eprintln!(
+                            "duplicate marker pair '{}' in {} (only first pair gets synced)",
+                            name,
+                            path.display()
+                        ),
                     }
                 }
                 std::process::exit(1);

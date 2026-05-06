@@ -75,7 +75,7 @@ pub fn run_doctor(root: &Path, config: &Config) -> Result<usize> {
         }
     }
 
-    // 3. Unpaired markers + stale (reuse check_all)
+    // 3. Unpaired markers + duplicate pairs (reuse check_all)
     for issue in check_all(root, config)? {
         match issue {
             CheckIssue::UnpairedOpen { path, name } => {
@@ -84,6 +84,14 @@ pub fn run_doctor(root: &Path, config: &Config) -> Result<usize> {
             }
             CheckIssue::UnpairedClose { path, name } => {
                 println!("unpaired close marker '{}' in {}", name, path.display());
+                issues += 1;
+            }
+            CheckIssue::DuplicatePair { path, name } => {
+                println!(
+                    "duplicate marker pair '{}' in {} (only first pair gets synced)",
+                    name,
+                    path.display()
+                );
                 issues += 1;
             }
             // Stale files aren't an error here — `check` covers that. Doctor

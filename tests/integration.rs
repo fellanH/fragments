@@ -289,6 +289,35 @@ fn check_detects_unpaired_close_marker() {
 }
 
 #[test]
+fn check_detects_duplicate_marker_pair() {
+    // Same fragment name has two open+close pairs in one page. Only the
+    // first pair gets synced (replace_marker_region uses first-find), so
+    // subsequent pairs silently drift stale.
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    setup_site(
+        root,
+        &[("nav.html", "<nav>Nav</nav>")],
+        &[(
+            "two-navs.html",
+            "<!-- fragment:nav -->\n<nav>A</nav>\n<!-- /fragment:nav -->\n\
+             <p>middle</p>\n\
+             <!-- fragment:nav -->\n<nav>B</nav>\n<!-- /fragment:nav -->",
+        )],
+    );
+
+    let output = run_check(root);
+    assert!(
+        !output.status.success(),
+        "check should fail on duplicate marker pair"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("duplicate marker pair"), "stderr: {stderr}");
+    assert!(stderr.contains("nav"));
+}
+
+#[test]
 fn check_passes_when_up_to_date() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
