@@ -13,10 +13,10 @@ struct SharedBlock {
     content: String, // scraper's html() output (for the fragment file)
 }
 
-/// Find the raw source span of a top-level `<tag ...>...</tag>` element
-/// by scanning the source text. Returns (start, end) byte offsets.
-/// Uses a simple depth counter to handle nested same-name tags.
-fn find_tag_span(src: &str, tag: &str) -> Option<(usize, usize)> {
+/// Find the source span of the FIRST top-level `<tag ...>...</tag>` element
+/// in `src`. Returns (start, end) byte offsets. Uses a depth counter to
+/// handle nested same-name tags.
+fn find_first_tag_span(src: &str, tag: &str) -> Option<(usize, usize)> {
     let open_prefix = format!("<{}", tag);
     let close_tag = format!("</{}>", tag);
 
@@ -58,6 +58,27 @@ fn find_tag_span(src: &str, tag: &str) -> Option<(usize, usize)> {
     None
 }
 
+/// Find the source span of the top-level `<tag>...</tag>` whose parsed
+/// outer-HTML equals `expected`. Walks every top-level same-tag occurrence.
+fn find_matching_tag_span(src: &str, tag: &str, expected: &str) -> Option<(usize, usize)> {
+    let Ok(sel) = Selector::parse(tag) else {
+        return None;
+    };
+    let mut from = 0;
+    while from < src.len() {
+        let (rel_start, rel_end) = find_first_tag_span(&src[from..], tag)?;
+        let abs_start = from + rel_start;
+        let abs_end = from + rel_end;
+        let candidate = &src[abs_start..abs_end];
+        let frag = Html::parse_fragment(candidate);
+        if frag.select(&sel).any(|el| el.html() == expected) {
+            return Some((abs_start, abs_end));
+        }
+        from = abs_end;
+    }
+    None
+}
+
 fn collect_html_files(root: &Path, fragments_dir: &Path) -> Vec<PathBuf> {
     WalkDir::new(root)
         .max_depth(5)
@@ -65,24 +86,20 @@ fn collect_html_files(root: &Path, fragments_dir: &Path) -> Vec<PathBuf> {
         .filter_entry(|e| {
             let p = e.path();
             !p.starts_with(fragments_dir)
-                && !p.starts_with(&root.join("_assets"))
-                && !p.starts_with(&root.join("css"))
-                && !p.starts_with(&root.join("fonts"))
+                && !p.starts_with(root.join("_assets"))
+                && !p.starts_with(root.join("css"))
+                && !p.starts_with(root.join("fonts"))
         })
         .filter_map(Result::ok)
         .filter(|e| {
-            e.file_type().is_file()
-                && e.path()
-                    .extension()
-                    .map(|x| x == "html")
-                    .unwrap_or(false)
+            e.file_type().is_file() && e.path().extension().map(|x| x == "html").unwrap_or(false)
         })
         .map(|e| e.into_path())
         .collect()
 }
 
 /// Scan HTML files in a site directory, detect shared DOM blocks,
-/// extract them to _fragments/*.html, and insert marker comments.
+/// extract them to <fragments_dir>/*.html, and insert marker comments.
 pub fn extract_fragments(root: &Path, config: &Config) -> Result<usize> {
     let fragments_dir = root.join(&config.fragments_dir);
 
@@ -148,17 +165,13 @@ pub fn extract_fragments(root: &Path, config: &Config) -> Result<usize> {
         return Ok(0);
     }
 
-    // Create _fragments/ directory
     fs::create_dir_all(&fragments_dir)?;
 
     // Write fragment files (using scraper's normalized HTML)
     for block in &shared_blocks {
         let frag_path = fragments_dir.join(format!("{}.html", block.name));
         fs::write(&frag_path, &block.content)?;
-        println!(
-            "  Extracted: {}/{}.html",
-            config.fragments_dir, block.name
-        );
+        println!("  Extracted: {}/{}.html", config.fragments_dir, block.name);
     }
 
     // Insert markers into pages using raw source tag matching.
@@ -183,20 +196,18 @@ pub fn extract_fragments(root: &Path, config: &Config) -> Result<usize> {
             }
 
             // Check with scraper that this page has the shared block
-            let sel = match Selector::parse(&format!(
-                "{}",
-                if block.tag == "div" {
-                    // For class-based selectors, use the original selector
-                    match block.name.as_str() {
-                        "navbar" => ".navbar",
-                        "site-header" => ".site-header",
-                        "site-footer" => ".site-footer",
-                        _ => &block.tag,
-                    }
-                } else {
-                    &block.tag
+            let selector_str = if block.tag == "div" {
+                // For class-based candidates, use the original CSS selector
+                match block.name.as_str() {
+                    "navbar" => ".navbar",
+                    "site-header" => ".site-header",
+                    "site-footer" => ".site-footer",
+                    _ => &block.tag,
                 }
-            )) {
+            } else {
+                &block.tag
+            };
+            let sel = match Selector::parse(selector_str) {
                 Ok(s) => s,
                 Err(_) => continue,
             };
@@ -206,13 +217,15 @@ pub fn extract_fragments(root: &Path, config: &Config) -> Result<usize> {
                 continue;
             }
 
-            // Find the element in the raw source using tag matching
-            if let Some((start, end)) = find_tag_span(&modified, &block.tag) {
+            // Find the matching element in the raw source — the one whose
+            // parsed outer-html equals the canonical block.content. Skip if
+            // we can't pin the exact source span: better an unwrapped page
+            // than the wrong element wrapped.
+            if let Some((start, end)) =
+                find_matching_tag_span(&modified, &block.tag, &block.content)
+            {
                 let raw_block = &modified[start..end];
-                let replacement = format!(
-                    "{}\n{}\n{}",
-                    open_marker, raw_block, close_marker
-                );
+                let replacement = format!("{open_marker}\n{raw_block}\n{close_marker}");
                 modified = format!("{}{}{}", &modified[..start], replacement, &modified[end..]);
                 changed = true;
             }

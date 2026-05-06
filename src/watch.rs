@@ -11,8 +11,8 @@ pub fn run(root: &Path, config: &Config) -> Result<()> {
 
     let (tx, rx) = mpsc::channel();
 
-    let mut debouncer = new_debouncer(Duration::from_millis(80), tx)
-        .context("failed to create file watcher")?;
+    let mut debouncer =
+        new_debouncer(Duration::from_millis(80), tx).context("failed to create file watcher")?;
 
     debouncer
         .watcher()

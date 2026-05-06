@@ -3,7 +3,7 @@ use std::path::Path;
 use tempfile::TempDir;
 
 fn setup_site(dir: &Path, fragments: &[(&str, &str)], pages: &[(&str, &str)]) {
-    let frag_dir = dir.join("_fragments");
+    let frag_dir = dir.join("fragments");
     fs::create_dir_all(&frag_dir).unwrap();
     for (name, content) in fragments {
         fs::write(frag_dir.join(name), content).unwrap();
@@ -13,7 +13,12 @@ fn setup_site(dir: &Path, fragments: &[(&str, &str)], pages: &[(&str, &str)]) {
     }
 }
 
-fn setup_site_with_config(dir: &Path, config: &str, fragments: &[(&str, &str)], pages: &[(&str, &str)]) {
+fn setup_site_with_config(
+    dir: &Path,
+    config: &str,
+    fragments: &[(&str, &str)],
+    pages: &[(&str, &str)],
+) {
     fs::write(dir.join("fragments.toml"), config).unwrap();
     let frag_dir_name = extract_fragments_dir(config);
     let frag_dir = dir.join(frag_dir_name);
@@ -33,7 +38,7 @@ fn extract_fragments_dir(config: &str) -> String {
             return val.to_string();
         }
     }
-    "_fragments".to_string()
+    "fragments".to_string()
 }
 
 fn run_sync(dir: &Path) -> std::process::Output {
@@ -138,8 +143,14 @@ fn sync_reports_updated_count() {
         root,
         &[("head.html", "<meta charset=\"utf-8\">")],
         &[
-            ("a.html", "<!-- fragment:head -->\nold\n<!-- /fragment:head -->"),
-            ("b.html", "<!-- fragment:head -->\nold\n<!-- /fragment:head -->"),
+            (
+                "a.html",
+                "<!-- fragment:head -->\nold\n<!-- /fragment:head -->",
+            ),
+            (
+                "b.html",
+                "<!-- fragment:head -->\nold\n<!-- /fragment:head -->",
+            ),
             ("c.html", "<p>No markers here</p>"),
         ],
     );
@@ -227,9 +238,54 @@ fn check_detects_stale_files() {
     );
 
     let output = run_check(root);
-    assert!(!output.status.success(), "check should fail for stale files");
+    assert!(
+        !output.status.success(),
+        "check should fail for stale files"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("stale"));
+}
+
+#[test]
+fn check_detects_unpaired_open_marker() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    setup_site(
+        root,
+        &[("head.html", "<meta>")],
+        &[("broken.html", "<!-- fragment:head -->\nno close marker\n")],
+    );
+
+    let output = run_check(root);
+    assert!(
+        !output.status.success(),
+        "check should fail on unpaired open"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unpaired open"), "stderr: {stderr}");
+    assert!(stderr.contains("head"));
+}
+
+#[test]
+fn check_detects_unpaired_close_marker() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    setup_site(
+        root,
+        &[("head.html", "<meta>")],
+        &[("broken.html", "<p>orphan</p>\n<!-- /fragment:head -->")],
+    );
+
+    let output = run_check(root);
+    assert!(
+        !output.status.success(),
+        "check should fail on unpaired close"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unpaired close"), "stderr: {stderr}");
+    assert!(stderr.contains("head"));
 }
 
 #[test]
@@ -266,7 +322,10 @@ fn arbitrary_fragment_names_work() {
         root,
         &[
             ("cta.html", "<a href=\"/buy\">Buy Now</a>"),
-            ("testimonials.html", "<blockquote>Great product!</blockquote>"),
+            (
+                "testimonials.html",
+                "<blockquote>Great product!</blockquote>",
+            ),
         ],
         &[(
             "pricing.html",
@@ -402,7 +461,10 @@ fn init_refuses_to_overwrite() {
     assert!(!output.status.success(), "init should refuse to overwrite");
 
     let result = fs::read_to_string(root.join("index.html")).unwrap();
-    assert!(result.contains("<p>existing</p>"), "original content preserved");
+    assert!(
+        result.contains("<p>existing</p>"),
+        "original content preserved"
+    );
 }
 
 #[test]
@@ -455,16 +517,12 @@ fn init_creates_agents_md() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
 
-    setup_site(
-        root,
-        &[("head.html", "<meta>")],
-        &[],
-    );
+    setup_site(root, &[("head.html", "<meta>")], &[]);
 
     let output = run_init(root, "index.html");
     assert!(output.status.success());
 
-    let agents = fs::read_to_string(root.join("_fragments/AGENTS.md")).unwrap();
+    let agents = fs::read_to_string(root.join("fragments/AGENTS.md")).unwrap();
     assert!(agents.contains("fragments"));
     assert!(agents.contains("<!-- fragment:<name> -->"));
 }
@@ -492,17 +550,13 @@ fn init_does_not_overwrite_agents_md() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
 
-    setup_site(
-        root,
-        &[("head.html", "<meta>")],
-        &[],
-    );
+    setup_site(root, &[("head.html", "<meta>")], &[]);
 
-    fs::write(root.join("_fragments/AGENTS.md"), "custom content").unwrap();
+    fs::write(root.join("fragments/AGENTS.md"), "custom content").unwrap();
 
     run_init(root, "index.html");
 
-    let agents = fs::read_to_string(root.join("_fragments/AGENTS.md")).unwrap();
+    let agents = fs::read_to_string(root.join("fragments/AGENTS.md")).unwrap();
     assert_eq!(agents, "custom content");
 }
 
@@ -513,13 +567,9 @@ fn target_dir_scans_subdirectory() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();
 
-    fs::write(
-        root.join("fragments.toml"),
-        "target_dir = \"www\"\n",
-    )
-    .unwrap();
+    fs::write(root.join("fragments.toml"), "target_dir = \"www\"\n").unwrap();
 
-    let frag_dir = root.join("_fragments");
+    let frag_dir = root.join("fragments");
     fs::create_dir_all(&frag_dir).unwrap();
     fs::write(frag_dir.join("head.html"), "<meta charset=\"utf-8\">").unwrap();
     fs::write(frag_dir.join("nav.html"), "<nav>Main Nav</nav>").unwrap();
@@ -548,7 +598,7 @@ fn target_dir_check_works() {
 
     fs::write(root.join("fragments.toml"), "target_dir = \"www\"\n").unwrap();
 
-    let frag_dir = root.join("_fragments");
+    let frag_dir = root.join("fragments");
     fs::create_dir_all(&frag_dir).unwrap();
     fs::write(frag_dir.join("head.html"), "<meta charset=\"utf-8\">").unwrap();
 
@@ -576,7 +626,7 @@ fn target_dir_init_creates_in_subdirectory() {
 
     fs::write(root.join("fragments.toml"), "target_dir = \"www\"\n").unwrap();
 
-    let frag_dir = root.join("_fragments");
+    let frag_dir = root.join("fragments");
     fs::create_dir_all(&frag_dir).unwrap();
     fs::write(frag_dir.join("head.html"), "<meta>").unwrap();
 
@@ -587,7 +637,10 @@ fn target_dir_init_creates_in_subdirectory() {
     assert!(output.status.success(), "init failed: {:?}", output);
 
     assert!(www.join("about.html").exists(), "file should be in www/");
-    assert!(!root.join("about.html").exists(), "file should NOT be at root");
+    assert!(
+        !root.join("about.html").exists(),
+        "file should NOT be at root"
+    );
 
     let result = fs::read_to_string(www.join("about.html")).unwrap();
     assert!(result.contains("<!-- fragment:head -->"));
@@ -615,4 +668,106 @@ fn legacy_html_sync_prefix_via_config() {
 
     let result = fs::read_to_string(root.join("index.html")).unwrap();
     assert!(result.contains("<meta charset=\"utf-8\">"));
+}
+
+// --- Extract command ---
+
+fn run_extract(dir: &Path) -> std::process::Output {
+    std::process::Command::new(env!("CARGO_BIN_EXE_fragments"))
+        .arg(dir.to_str().unwrap())
+        .arg("extract")
+        .output()
+        .expect("failed to run fragments")
+}
+
+#[test]
+fn extract_wraps_correct_element_among_siblings() {
+    // Two pages share an identical canonical <footer>. Each page ALSO has a
+    // different page-specific <footer> appearing earlier in source order.
+    // Only the canonical footer is shared across pages, so only it should
+    // be extracted. The pre-fix bug always wrapped the FIRST same-tag span
+    // (the page-specific footnote), corrupting the wrong element.
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    let canonical = "<footer><p>&copy; SiteCo</p></footer>";
+
+    let page_a = format!(
+        "<!DOCTYPE html><html><body>\n<footer><p>Footnote A</p></footer>\n<main>A</main>\n{canonical}\n</body></html>"
+    );
+    let page_b = format!(
+        "<!DOCTYPE html><html><body>\n<footer><p>Footnote B</p></footer>\n<main>B</main>\n{canonical}\n</body></html>"
+    );
+
+    fs::write(root.join("a.html"), &page_a).unwrap();
+    fs::write(root.join("b.html"), &page_b).unwrap();
+
+    let output = run_extract(root);
+    assert!(output.status.success(), "extract failed: {:?}", output);
+
+    for (path, footnote) in [("a.html", "Footnote A"), ("b.html", "Footnote B")] {
+        let content = fs::read_to_string(root.join(path)).unwrap();
+        let open = content
+            .find("<!-- fragment:footer -->")
+            .unwrap_or_else(|| panic!("{path} missing open marker:\n{content}"));
+        let close = content
+            .find("<!-- /fragment:footer -->")
+            .unwrap_or_else(|| panic!("{path} missing close marker"));
+        let wrapped = &content[open..close];
+        assert!(
+            wrapped.contains("SiteCo"),
+            "{path}: marker should wrap the canonical footer, got:\n{wrapped}"
+        );
+        assert!(
+            !wrapped.contains(footnote),
+            "{path}: marker incorrectly wrapped the page-specific <footer> ({footnote})"
+        );
+    }
+}
+
+#[test]
+fn extract_creates_fragment_file() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    let nav_html = "<nav><a href=\"/\">Home</a><a href=\"/about\">About</a></nav>";
+    let page = |unique: &str| {
+        format!("<!DOCTYPE html><html><body>{nav_html}<main>{unique}</main></body></html>")
+    };
+
+    fs::write(root.join("a.html"), page("A")).unwrap();
+    fs::write(root.join("b.html"), page("B")).unwrap();
+
+    let output = run_extract(root);
+    assert!(output.status.success());
+
+    let frag = fs::read_to_string(root.join("fragments/nav.html")).unwrap();
+    assert!(frag.contains("<a href=\"/\">Home</a>"));
+}
+
+#[test]
+fn extract_idempotent_does_not_double_wrap() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path();
+
+    let nav_html = "<nav><a href=\"/\">Home</a></nav>";
+    let page = |unique: &str| {
+        format!("<!DOCTYPE html><html><body>{nav_html}<main>{unique}</main></body></html>")
+    };
+
+    fs::write(root.join("a.html"), page("A")).unwrap();
+    fs::write(root.join("b.html"), page("B")).unwrap();
+
+    let _ = run_extract(root);
+    let after_first = fs::read_to_string(root.join("a.html")).unwrap();
+
+    let _ = run_extract(root);
+    let after_second = fs::read_to_string(root.join("a.html")).unwrap();
+
+    assert_eq!(after_first, after_second, "second extract must be a no-op");
+    assert_eq!(
+        after_first.matches("<!-- fragment:nav -->").count(),
+        1,
+        "marker must not be duplicated"
+    );
 }

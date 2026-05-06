@@ -68,7 +68,7 @@ pub fn init_page(root: &Path, file: &str, config: &Config) -> Result<()> {
         html.push_str(&indent(m, 2));
         html.push('\n');
     }
-    html.push_str("\n");
+    html.push('\n');
     for m in &body_close_markers {
         html.push_str(&indent(m, 2));
         html.push('\n');
@@ -136,13 +136,7 @@ fn discover_fragment_names(fragments_dir: &Path) -> Vec<String> {
                 .map(|ext| ext == "html")
                 .unwrap_or(false)
         })
-        .map(|e| {
-            e.path()
-                .file_stem()
-                .unwrap()
-                .to_string_lossy()
-                .to_string()
-        })
+        .map(|e| e.path().file_stem().unwrap().to_string_lossy().to_string())
         .collect();
 
     names.sort();

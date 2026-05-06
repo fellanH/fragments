@@ -10,7 +10,11 @@ use config::Config;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "fragments", about = "Sync shared fragments across files")]
+#[command(
+    name = "fragments",
+    version,
+    about = "Sync shared fragments across files"
+)]
 struct Cli {
     /// Project root (contains fragments/ and target files)
     #[arg(default_value = ".")]
@@ -33,7 +37,7 @@ enum Cmd {
         /// Filename to create (e.g. about.html)
         file: String,
     },
-    /// Scan pages, detect shared blocks, extract to _fragments/ and insert markers
+    /// Scan pages, detect shared blocks, extract to fragments/ and insert markers
     Extract,
 }
 
@@ -58,12 +62,20 @@ fn main() -> Result<()> {
             watch::run(&root, &config)?;
         }
         Cmd::Check => {
-            let stale = sync::check_all(&root, &config)?;
-            if stale.is_empty() {
+            let issues = sync::check_all(&root, &config)?;
+            if issues.is_empty() {
                 println!("fragments: all files up to date");
             } else {
-                for p in &stale {
-                    eprintln!("stale: {}", p.display());
+                for issue in &issues {
+                    match issue {
+                        sync::CheckIssue::Stale(p) => eprintln!("stale: {}", p.display()),
+                        sync::CheckIssue::UnpairedOpen { path, name } => {
+                            eprintln!("unpaired open marker '{}' in {}", name, path.display())
+                        }
+                        sync::CheckIssue::UnpairedClose { path, name } => {
+                            eprintln!("unpaired close marker '{}' in {}", name, path.display())
+                        }
+                    }
                 }
                 std::process::exit(1);
             }

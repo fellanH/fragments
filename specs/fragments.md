@@ -240,7 +240,7 @@ The binary scans `*.html` at root and replaces every marker region with the corr
 |---------|----------|
 | `fragments sync` | One-shot: process all pages |
 | `fragments watch` | Sync, then watch `fragments/` for changes |
-| `fragments check` | Dry-run: exit 1 if any page is stale (CI/pre-commit) |
+| `fragments check` | Dry-run: exit 1 if any page is stale or has unpaired markers (CI/pre-commit) |
 | `fragments init <file>` | Create new page with marker pairs for all fragments |
 
 ## Design principles

@@ -36,13 +36,9 @@ impl Fragments {
 
         for entry in files {
             let path = entry.path();
-            let name = path
-                .file_stem()
-                .unwrap()
-                .to_string_lossy()
-                .to_string();
-            let content = fs::read_to_string(&path)
-                .with_context(|| format!("reading {}", path.display()))?;
+            let name = path.file_stem().unwrap().to_string_lossy().to_string();
+            let content =
+                fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
             entries.push((name, content));
         }
 
@@ -53,7 +49,12 @@ impl Fragments {
     }
 }
 
-fn replace_marker_region(html: &str, prefix: &str, name: &str, new_content: &str) -> Option<String> {
+fn replace_marker_region(
+    html: &str,
+    prefix: &str,
+    name: &str,
+    new_content: &str,
+) -> Option<String> {
     let open = open_tag(prefix, name);
     let close = close_tag(prefix, name);
 
@@ -90,14 +91,13 @@ fn collect_html_files(scan_root: &Path, fragments_dir: &Path) -> Vec<PathBuf> {
             let p = e.path();
             !p.starts_with(fragments_dir)
                 && !p.starts_with(&tools_dir)
-                && !p.starts_with(&scan_root.join("node_modules"))
-                && !p.starts_with(&scan_root.join("css"))
-                && !p.starts_with(&scan_root.join("fonts"))
+                && !p.starts_with(scan_root.join("node_modules"))
+                && !p.starts_with(scan_root.join("css"))
+                && !p.starts_with(scan_root.join("fonts"))
         })
         .filter_map(Result::ok)
         .filter(|e| {
-            e.file_type().is_file()
-                && e.path().extension().map(|x| x == "html").unwrap_or(false)
+            e.file_type().is_file() && e.path().extension().map(|x| x == "html").unwrap_or(false)
         })
         .map(|e| e.into_path())
         .collect()
@@ -137,8 +137,8 @@ pub fn sync_all(root: &Path, config: &Config) -> Result<usize> {
 }
 
 fn sync_one(path: &Path, frags: &Fragments) -> Result<bool> {
-    let current = fs::read_to_string(path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let current =
+        fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let updated = apply_fragments(&current, frags)?;
 
     if updated == current {
@@ -149,20 +149,103 @@ fn sync_one(path: &Path, frags: &Fragments) -> Result<bool> {
     Ok(true)
 }
 
-pub fn check_all(root: &Path, config: &Config) -> Result<Vec<PathBuf>> {
+pub enum CheckIssue {
+    Stale(PathBuf),
+    UnpairedOpen { path: PathBuf, name: String },
+    UnpairedClose { path: PathBuf, name: String },
+}
+
+pub fn check_all(root: &Path, config: &Config) -> Result<Vec<CheckIssue>> {
     let fragments_dir = root.join(&config.fragments_dir);
     let scan_root = root.join(&config.target_dir);
     let frags = Fragments::load(&fragments_dir, &config.marker_prefix)?;
     let files = collect_html_files(&scan_root, &fragments_dir);
-    let mut stale = Vec::new();
+    let mut issues = Vec::new();
 
     for path in &files {
         let current = fs::read_to_string(path)?;
+        let rel = path.strip_prefix(root).unwrap_or(path).to_path_buf();
+
+        for unpaired in validate_markers(&current, &config.marker_prefix) {
+            match unpaired {
+                Unpaired::Open(name) => issues.push(CheckIssue::UnpairedOpen {
+                    path: rel.clone(),
+                    name,
+                }),
+                Unpaired::Close(name) => issues.push(CheckIssue::UnpairedClose {
+                    path: rel.clone(),
+                    name,
+                }),
+            }
+        }
+
         let expected = apply_fragments(&current, &frags)?;
         if current != expected {
-            stale.push(path.strip_prefix(root).unwrap_or(path).to_path_buf());
+            issues.push(CheckIssue::Stale(rel));
         }
     }
 
-    Ok(stale)
+    Ok(issues)
+}
+
+enum Unpaired {
+    Open(String),
+    Close(String),
+}
+
+fn validate_markers(html: &str, prefix: &str) -> Vec<Unpaired> {
+    let open_prefix = format!("<!-- {prefix}:");
+    let close_prefix = format!("<!-- /{prefix}:");
+    let suffix = " -->";
+
+    let mut markers: Vec<(bool, String)> = Vec::new();
+    let mut idx = 0;
+    while idx < html.len() {
+        let next_open = html[idx..].find(&open_prefix);
+        let next_close = html[idx..].find(&close_prefix);
+
+        let (start, is_open, prefix_len) = match (next_open, next_close) {
+            (None, None) => break,
+            (Some(o), None) => (idx + o, true, open_prefix.len()),
+            (None, Some(c)) => (idx + c, false, close_prefix.len()),
+            (Some(o), Some(c)) => {
+                if idx + o < idx + c {
+                    (idx + o, true, open_prefix.len())
+                } else {
+                    (idx + c, false, close_prefix.len())
+                }
+            }
+        };
+
+        let name_start = start + prefix_len;
+        let Some(suffix_offset) = html[name_start..].find(suffix) else {
+            break;
+        };
+        let raw_name = html[name_start..name_start + suffix_offset].trim();
+        // Skip if the "name" contains spaces or other suspicious chars — it's not a real marker
+        if !raw_name.is_empty()
+            && raw_name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            markers.push((is_open, raw_name.to_string()));
+        }
+        idx = name_start + suffix_offset + suffix.len();
+    }
+
+    let mut stack: Vec<String> = Vec::new();
+    let mut unpaired = Vec::new();
+    for (is_open, name) in markers {
+        if is_open {
+            stack.push(name);
+        } else if stack.last() == Some(&name) {
+            stack.pop();
+        } else {
+            unpaired.push(Unpaired::Close(name));
+        }
+    }
+    for name in stack {
+        unpaired.push(Unpaired::Open(name));
+    }
+    unpaired
 }

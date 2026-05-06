@@ -18,7 +18,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             marker_prefix: "fragment".to_string(),
-            fragments_dir: "_fragments".to_string(),
+            fragments_dir: "fragments".to_string(),
             target_dir: ".".to_string(),
         }
     }

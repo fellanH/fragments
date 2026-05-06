@@ -1,6 +1,6 @@
 # fragments
 
-Core tool complete. 22 tests. Binary, config, naming, extract all aligned.
+Core tool complete. 27 tests. Binary, config, naming, extract all aligned. `check` validates unpaired markers; `extract` targets the canonical occurrence among same-tag siblings; `--version` flag; CI workflow.
 
 ## Decisions
 
