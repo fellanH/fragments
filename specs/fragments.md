@@ -257,6 +257,24 @@ This pattern resolves the "fragments can't do variables" friction without
 breaking the file-is-truth invariant. Apply it whenever a region has the shape
 `[mostly-shared] + [a few per-file values]`.
 
+### Syncing a shared block across sibling repos
+
+fragments operates on **one root** — it scans `target_dir` and pulls from that
+root's `_fragments/`. Sharing a block across *separate* project repos (e.g. the
+same "Canon rules" section in every workspace's `AGENTS.md`) is a convention, not
+a core feature, and has two answers:
+
+- **Symlink the canonical fragment (recommended).** Keep one source of truth at a
+  parent location and `ln -s` it into each repo's `_fragments/<name>`. Each repo
+  still runs `fragments sync` locally; editing the canonical file updates every
+  repo on its next sync. This is the `docs-as-fragments` canon pattern.
+- **One root over a parent dir.** Point `target_dir` at a directory containing
+  multiple project subdirs and raise `max_depth`. Simpler, but couples the repos
+  into one sync run — prefer the symlink approach when the repos are independent.
+
+Either way the core is unchanged: cross-repo sharing is a placement decision, not
+a new mechanism. Validated by dogfood 2026-06-02 (`audits/2026-06-02-format-agnostic-dogfood.md`).
+
 ## Considered and deferred
 
 The reasoning below is format-neutral; the HTML examples are illustrative.
