@@ -9,7 +9,7 @@ format*, so the same fragment syncs into HTML, CSS, JS, Markdown, YAML, shell,
 SQL, and more — each file staying valid in its native syntax.
 
 For HTML-specific helpers (page scaffolding, DOM-aware extraction, link
-integrity), see the sibling [`pagekit`](../pagekit), which composes this core.
+integrity), see the sibling `pagekit`, which composes this core.
 
 ## Install
 
@@ -82,9 +82,9 @@ minimal.
 | Comment style | Extensions (built-in) |
 | --- | --- |
 | `<!-- … -->` | html, htm, xhtml, xml, svg, vue, svelte, md, markdown |
-| `/* … */` | css, scss, less, js, mjs, cjs, jsx, ts, tsx, c, cc, cpp, h, hpp, java, go, rs, swift, kt, php, scala, dart |
-| `# …` (line) | yaml, yml, toml, sh, bash, zsh, fish, py, rb, pl, r, conf, cfg, ini, env, Dockerfile, Makefile, .gitignore |
-| `-- …` (line) | sql, lua, hs, elm |
+| `/* … */` | css, scss, less, js, mjs, cjs, jsx, ts, tsx, c, cc, cpp, cxx, h, hpp, java, go, rs, rust, swift, kt, kts, php, scala, dart |
+| `# …` (line) | yaml, yml, toml, sh, bash, zsh, fish, py, rb, pl, r, conf, cfg, ini, properties, env, Dockerfile, Makefile, .mk, .gitignore |
+| `-- …` (line) | sql, lua, hs, elm, adb, ads |
 
 Anything not in the table is invisible to fragments. Add or override formats in
 `fragments.toml` (see below).

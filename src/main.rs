@@ -9,14 +9,14 @@ use std::path::PathBuf;
     version,
     about = "Marker-region sync for any text format",
     long_about = "fragments keeps marked regions in target files identical to source \
-files in `fragments/`. Format-agnostic — works on any text file with comment-pair syntax. \
+files in `_fragments/`. Format-agnostic — works on any text file with comment-pair syntax. \
 Every file is valid in its native format at all times. \
 \n\nFor HTML-specific helpers (page scaffolding, DOM-aware extraction), see `pagekit`, \
 which composes this primitive. \
 \n\nConfig lives in `fragments.toml` (optional). See specs/fragments.md for the schema."
 )]
 struct Cli {
-    /// Project root (contains fragments/ and target files)
+    /// Project root (contains _fragments/ and target files)
     #[arg(default_value = ".")]
     root: PathBuf,
 
@@ -32,7 +32,7 @@ struct Cli {
 enum Cmd {
     /// Sync all files with current fragment content (default)
     Sync,
-    /// Watch fragments/ for changes, sync on save
+    /// Watch _fragments/ for changes, sync on save
     Watch,
     /// Dry-run: exit 1 if any file is stale or has malformed markers
     Check,
