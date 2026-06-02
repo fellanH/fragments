@@ -206,19 +206,44 @@ pub(crate) fn collect_target_files(
         .collect()
 }
 
-/// Sync all target files. Equivalent to [`sync_all_with`] with no hooks.
+/// Sync all target files, returning the count of files updated. Equivalent
+/// to [`sync_all_with`] with no hooks.
 pub fn sync_all(root: &Path, config: &Config) -> Result<usize> {
-    sync_all_with(root, config, &[])
+    Ok(sync_all_paths(root, config)?.len())
 }
 
 /// Sync all target files, applying `hooks` to each fragment's content
-/// before it's written into a marker region. Hooks chain sequentially.
+/// before it's written into a marker region; returns the count of files
+/// updated. Hooks chain sequentially.
 ///
 /// Use this entry point when content needs to be transformed per-target
 /// (e.g., path rewriting based on target depth, variant selection by
 /// page identity). Hooks see fragment content; the fragment files on
 /// disk are unchanged.
+///
+/// For the list of paths that changed (e.g. to print a per-file report),
+/// use [`sync_all_paths_with`]; this function is a thin `.len()` wrapper
+/// over it. The library never writes to stdout — formatting is the
+/// caller's job, so consumers like `pagekit` get clean output.
 pub fn sync_all_with(root: &Path, config: &Config, hooks: &[Box<dyn SyncHook>]) -> Result<usize> {
+    Ok(sync_all_paths_with(root, config, hooks)?.len())
+}
+
+/// Sync all target files, returning the paths that were updated (in scan
+/// order). Equivalent to [`sync_all_paths_with`] with no hooks.
+pub fn sync_all_paths(root: &Path, config: &Config) -> Result<Vec<PathBuf>> {
+    sync_all_paths_with(root, config, &[])
+}
+
+/// Sync all target files, applying `hooks`, and return the absolute paths
+/// of every file whose content changed (in scan order). This is the
+/// data-returning core; [`sync_all_with`] wraps it for callers that only
+/// need a count. Does not print — the caller decides how to report.
+pub fn sync_all_paths_with(
+    root: &Path,
+    config: &Config,
+    hooks: &[Box<dyn SyncHook>],
+) -> Result<Vec<PathBuf>> {
     let fragments_dir = root.join(&config.fragments_dir);
     if !fragments_dir.is_dir() {
         bail!(
@@ -239,12 +264,11 @@ pub fn sync_all_with(root: &Path, config: &Config, hooks: &[Box<dyn SyncHook>]) 
 
     let frags = Fragments::load(&fragments_dir, &config.marker_prefix)?;
     let files = collect_target_files(&scan_root, &fragments_dir, config);
-    let mut updated = 0;
+    let mut updated = Vec::new();
 
-    for path in &files {
-        if sync_one(path, root, &frags, config, hooks)? {
-            updated += 1;
-            println!("  {}", path.strip_prefix(root).unwrap_or(path).display());
+    for path in files {
+        if sync_one(&path, root, &frags, config, hooks)? {
+            updated.push(path);
         }
     }
 
@@ -297,6 +321,54 @@ pub enum CheckIssue {
         path: PathBuf,
         name: String,
     },
+}
+
+/// JSON-serializable view of a [`CheckIssue`]. The `kind` tag names the
+/// problem; `name` is omitted for `stale` (which has no fragment name).
+#[derive(serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CheckIssueJson {
+    Stale { path: String },
+    UnpairedOpen { path: String, name: String },
+    UnpairedClose { path: String, name: String },
+    DuplicatePair { path: String, name: String },
+}
+
+impl From<&CheckIssue> for CheckIssueJson {
+    fn from(issue: &CheckIssue) -> Self {
+        let p = |path: &Path| path.display().to_string();
+        match issue {
+            CheckIssue::Stale(path) => CheckIssueJson::Stale { path: p(path) },
+            CheckIssue::UnpairedOpen { path, name } => CheckIssueJson::UnpairedOpen {
+                path: p(path),
+                name: name.clone(),
+            },
+            CheckIssue::UnpairedClose { path, name } => CheckIssueJson::UnpairedClose {
+                path: p(path),
+                name: name.clone(),
+            },
+            CheckIssue::DuplicatePair { path, name } => CheckIssueJson::DuplicatePair {
+                path: p(path),
+                name: name.clone(),
+            },
+        }
+    }
+}
+
+/// JSON report for `check`: `ok` is true when no issues were found.
+#[derive(serde::Serialize)]
+pub struct CheckReport {
+    pub ok: bool,
+    pub issues: Vec<CheckIssueJson>,
+}
+
+impl CheckReport {
+    pub fn from_issues(issues: &[CheckIssue]) -> Self {
+        CheckReport {
+            ok: issues.is_empty(),
+            issues: issues.iter().map(CheckIssueJson::from).collect(),
+        }
+    }
 }
 
 /// Check all target files for stale, malformed, or duplicate markers.

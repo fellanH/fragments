@@ -170,6 +170,7 @@ dependencies = [
  "notify",
  "notify-debouncer-mini",
  "serde",
+ "serde_json",
  "tempfile",
  "toml",
  "walkdir",

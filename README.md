@@ -45,7 +45,8 @@ fragments <project-root> config   # print effective config (defaults + fragments
 fragments <project-root> doctor   # health check: orphans, unpaired/duplicate markers
 ```
 
-`<project-root>` defaults to `.`.
+`<project-root>` defaults to `.`. Add `--json` to `check`, `list`, or `doctor`
+for machine-readable output (agent/CI consumers); exit codes are unchanged.
 
 ## How it works
 

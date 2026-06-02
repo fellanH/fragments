@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `--json` flag on `check`, `list`, and `doctor` for machine-readable output (agent/CI consumers). Each emits a stable `kind`-tagged schema; exit codes are unchanged (`check`/`doctor` still exit 1 on issues).
+- `sync_all_paths` / `sync_all_paths_with` library functions returning the `Vec<PathBuf>` of updated files, plus `CheckReport`, `ListReport`/`FragmentRef`, and `DoctorReport`/`DoctorIssue` serializable report types.
+- `tests/json_output.rs` — 3 tests covering the `--json` contract for list/doctor/check.
+
+### Changed
+- **Library no longer writes to stdout.** `sync_all`/`sync_all_with` previously printed each updated path; that formatting moved to the `fragments` binary. Library consumers (e.g. `pagekit`) now get clean output. `sync_all`/`sync_all_with` keep their `usize` return — fully backward compatible.
+- `doctor` orphan-marker output is now sorted (deterministic) instead of hash-ordered.
+
+### Note
+- The crate is published on crates.io as **`fragments-sync`** (the bare `fragments` name was already taken); the binary/CLI command and `use fragments::` lib name are unchanged.
+
 ## [0.7.0] — 2026-06-02
 
 ### Added

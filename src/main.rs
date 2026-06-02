@@ -22,6 +22,10 @@ struct Cli {
 
     #[command(subcommand)]
     cmd: Option<Cmd>,
+
+    /// Emit machine-readable JSON instead of human text (check, list, doctor)
+    #[arg(long, global = true)]
+    json: bool,
 }
 
 #[derive(Subcommand)]
@@ -49,8 +53,11 @@ fn main() -> Result<()> {
 
     match cli.cmd.unwrap_or(Cmd::Sync) {
         Cmd::Sync => {
-            let n = fragments::sync_all(&root, &config)?;
-            println!("fragments: updated {n} file(s)");
+            let updated = fragments::sync_all_paths(&root, &config)?;
+            for path in &updated {
+                println!("  {}", path.strip_prefix(&root).unwrap_or(path).display());
+            }
+            println!("fragments: updated {} file(s)", updated.len());
         }
         Cmd::Watch => {
             let n = fragments::sync_all(&root, &config)?;
@@ -62,7 +69,10 @@ fn main() -> Result<()> {
         }
         Cmd::Check => {
             let issues = fragments::check_all(&root, &config)?;
-            if issues.is_empty() {
+            if cli.json {
+                let report = fragments::sync::CheckReport::from_issues(&issues);
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else if issues.is_empty() {
                 println!("fragments: all files up to date");
             } else {
                 for issue in &issues {
@@ -81,18 +91,31 @@ fn main() -> Result<()> {
                         ),
                     }
                 }
+            }
+            if !issues.is_empty() {
                 std::process::exit(1);
             }
         }
         Cmd::List => {
-            fragments::list::list_fragments(&root, &config)?;
+            if cli.json {
+                let report = fragments::list::collect(&root, &config)?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                fragments::list::list_fragments(&root, &config)?;
+            }
         }
         Cmd::Config => {
             let toml = toml::to_string_pretty(&config).context("serializing config")?;
             print!("{toml}");
         }
         Cmd::Doctor => {
-            let issues = fragments::doctor::run_doctor(&root, &config)?;
+            let issues = if cli.json {
+                let report = fragments::doctor::collect(&root, &config)?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+                report.issues.len()
+            } else {
+                fragments::doctor::run_doctor(&root, &config)?
+            };
             if issues > 0 {
                 std::process::exit(1);
             }

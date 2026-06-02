@@ -5,8 +5,26 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-/// Print every fragment in `fragments_dir` and how many pages reference it.
-pub fn list_fragments(root: &Path, config: &Config) -> Result<()> {
+/// One fragment and how many target pages reference it.
+#[derive(serde::Serialize)]
+pub struct FragmentRef {
+    pub name: String,
+    pub pages: usize,
+}
+
+/// Structured result of `list`: every fragment with its reference count,
+/// plus totals. Serializes directly to the `list --json` payload.
+#[derive(serde::Serialize)]
+pub struct ListReport {
+    pub fragments_dir: String,
+    pub total: usize,
+    pub scanned_pages: usize,
+    pub fragments: Vec<FragmentRef>,
+}
+
+/// Compute the fragment-to-page reference map without printing. The text
+/// renderer [`list_fragments`] and the `list --json` path share this.
+pub fn collect(root: &Path, config: &Config) -> Result<ListReport> {
     let fragments_dir = root.join(&config.fragments_dir);
     if !fragments_dir.is_dir() {
         bail!(
@@ -37,22 +55,51 @@ pub fn list_fragments(root: &Path, config: &Config) -> Result<()> {
         }
     }
 
-    let max_name_len = frag_names.iter().map(|n| n.len()).max().unwrap_or(0);
+    let fragments = frag_names
+        .iter()
+        .map(|name| FragmentRef {
+            pages: counts.get(name).copied().unwrap_or(0),
+            name: name.clone(),
+        })
+        .collect();
+
+    Ok(ListReport {
+        fragments_dir: config.fragments_dir.clone(),
+        total: frag_names.len(),
+        scanned_pages: files.len(),
+        fragments,
+    })
+}
+
+/// Print every fragment in `fragments_dir` and how many pages reference it.
+pub fn list_fragments(root: &Path, config: &Config) -> Result<()> {
+    let report = collect(root, config)?;
+
+    let max_name_len = report
+        .fragments
+        .iter()
+        .map(|f| f.name.len())
+        .max()
+        .unwrap_or(0);
     println!(
         "fragments in {}/ ({} total):",
-        config.fragments_dir,
-        frag_names.len()
+        report.fragments_dir, report.total
     );
-    for name in &frag_names {
-        let count = counts.get(name).copied().unwrap_or(0);
-        let suffix = if count == 0 { " (unreferenced)" } else { "" };
+    for frag in &report.fragments {
+        let suffix = if frag.pages == 0 {
+            " (unreferenced)"
+        } else {
+            ""
+        };
         println!(
             "  {name:<width$}  {count} page(s){suffix}",
-            width = max_name_len
+            name = frag.name,
+            width = max_name_len,
+            count = frag.pages,
         );
     }
     println!();
-    println!("scanned {} page(s)", files.len());
+    println!("scanned {} page(s)", report.scanned_pages);
 
     Ok(())
 }
