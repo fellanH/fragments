@@ -2,7 +2,11 @@
 
 ## What fragments is
 
-A single Rust binary that syncs marker-region content across files. The primitive: marked regions in target files are kept identical to source files in `fragments/`. Format-agnostic — works on any text file with comment-pair syntax.
+A single Rust binary that syncs marker-region content across files. The
+primitive: marked regions in target files are kept identical to source files in
+`_fragments/`. Format-agnostic — markers are ordinary comments in the *target
+file's own format*, so the same fragment syncs into any text format that has a
+comment syntax.
 
 ```html
 <!-- fragment:head -->
@@ -22,17 +26,56 @@ A single Rust binary that syncs marker-region content across files. The primitiv
 # /fragment:auth-config
 ```
 
-Every file is valid in its native format at all times — before sync, after sync, mid-edit. No template state, no placeholder syntax, no source-vs-output distinction.
+Every file is valid in its native format at all times — before sync, after
+sync, mid-edit. No template state, no placeholder syntax, no source-vs-output
+distinction.
 
 ## Why it exists
 
-Bulk content management without templates. An agent (or human) edits one file in `fragments/`, runs `fragments sync`, and the change propagates across every file with the matching marker pair. No build step, no intermediate format, no framework.
+Bulk content management without templates. An agent (or human) edits one file in
+`_fragments/`, runs `fragments sync`, and the change propagates across every
+file with the matching marker pair. No build step, no intermediate format, no
+framework.
 
-The original motivating use case was vanilla HTML websites — managing nav links, shared headers, pricing across many pages without reaching for a JS framework. That use case is now best served by [`pagekit`](../pagekit), which composes fragments core and adds HTML-specific helpers (page scaffolding, DOM-aware extraction). Fragments itself stays general — useful for any text format with comment-pair syntax.
+The original motivating use case was vanilla HTML websites — managing nav links,
+shared headers, pricing across many pages without reaching for a JS framework.
+That use case is now best served by [`pagekit`](../pagekit), which composes
+fragments core and adds HTML-specific helpers (page scaffolding, DOM-aware
+extraction, link integrity). Fragments itself stays general — useful for any
+text format with comment-pair syntax.
+
+## Comment syntax per format
+
+Markers are built from the comment syntax of the file they live in. fragments
+resolves that syntax from the file's extension (or, for extensionless files like
+`Makefile`, its name) via a built-in table:
+
+| Comment style | Extensions (built-in) |
+| --- | --- |
+| `<!-- … -->` | html, htm, xhtml, xml, svg, vue, svelte, md, markdown |
+| `/* … */` | css, scss, less, js, mjs, cjs, jsx, ts, tsx, c, cc, cpp, h, hpp, java, go, rs, swift, kt, php, scala, dart |
+| `# …` (line) | yaml, yml, toml, sh, bash, zsh, fish, py, rb, pl, r, conf, cfg, ini, env, Dockerfile, Makefile, .gitignore |
+| `-- …` (line) | sql, lua, hs, elm |
+
+Block-comment markers (`<!-- fragment:x -->`) carry their closing delimiter;
+line-comment markers (`# fragment:x`) run to end-of-line. Formats not in the
+table are invisible to fragments unless declared in config (below). Markdown
+maps to HTML comments because that is what renders invisibly in Markdown.
+
+A fragment's **name** is its file stem (`nav.html` → `nav`); the fragment file's
+own extension is irrelevant to matching. The same fragment named `notice` syncs
+into `index.html` (`<!-- fragment:notice -->`), `style.css`
+(`/* fragment:notice */`), and `deploy.sh` (`# fragment:notice`) at once — each
+target staying valid in its native format. Two source files that resolve to the
+same name (e.g. `header.html` + `header.css`) are an error: the name is
+ambiguous and sync refuses rather than silently picking one.
 
 ## Library API: SyncHook
 
-Library consumers (notably `pagekit`) can register transform hooks that mutate fragment content per target file before insertion. The fragment file on disk stays canonical; the transform applies only to the copy that lands in the target's marker region.
+Library consumers (notably `pagekit`) can register transform hooks that mutate
+fragment content per target file before insertion. The fragment file on disk
+stays canonical; the transform applies only to the copy that lands in the
+target's marker region.
 
 ```rust
 use fragments::{Config, SyncHook, sync_all_with};
@@ -49,63 +92,84 @@ let hooks: Vec<Box<dyn SyncHook>> = vec![Box::new(DepthRelativizer)];
 fragments::sync_all_with(&root, &config, &hooks)?;
 ```
 
-Hooks chain sequentially. The first hook receives the canonical fragment content; each subsequent hook receives the prior hook's output. Errors propagate via `?`.
+Hooks chain sequentially. The first hook receives the canonical fragment
+content; each subsequent hook receives the prior hook's output. Errors propagate
+via `?`.
 
-For consistency, consumers calling `sync_all_with(hooks)` MUST also call `check_all_with(hooks)` and `watch::run_with(hooks)` — otherwise CI staleness reports or reactive resyncs will produce different output than initial sync.
+For consistency, consumers calling `sync_all_with(hooks)` MUST also call
+`check_all_with(hooks)` and `watch::run_with(hooks)` — otherwise CI staleness
+reports or reactive resyncs will produce different output than initial sync.
+
+The stable high-level surface is `sync_all` / `sync_all_with`, `check_all` /
+`check_all_with`, `watch::run` / `watch::run_with`, `Config`, and the `SyncHook`
+trait. `CommentSyntax` and `referenced_fragment_names` are also exported for
+consumers that need to reason about markers directly.
 
 ## Sibling: pagekit
 
-`pagekit` is the opinionated layer for vanilla HTML site management. It depends on `fragments` for the sync primitive and adds:
+`pagekit` is the opinionated layer for vanilla HTML site management. It depends
+on `fragments` for the sync primitive and adds:
 
 - `init` — scaffold new HTML pages with semantic marker placement
 - `extract` — detect shared DOM blocks via CSS selectors and extract them
 - HTML-aware health checks (link integrity, framework-export anomalies)
-- Recommended config defaults for static-site conventions
+- Recommended config defaults for static-site conventions (the `css`, `fonts`,
+  `_assets`, `dist`, `node_modules` exclude set, etc.)
 
-Use `fragments` if your need is text sync across any format. Use `pagekit` if you're managing a vanilla HTML site.
-
-> **Stage 1 note (2026-05-06):** `init` and `extract` currently live in fragments. Stage 2 of the fork moves them into pagekit; Stage 1 is documentation reframing only.
+Use `fragments` if your need is text sync across any format. Use `pagekit` if
+you're managing a vanilla HTML site. `init` and `extract` moved from fragments
+to pagekit when the fork shipped (Stage 2); fragments core no longer carries any
+HTML-specific command.
 
 ## Agent-first design
 
-The tool is designed so that AI agents can manage large static websites with minimal context and maximum leverage.
+The tool is designed so that AI agents can manage large content trees with
+minimal context and maximum leverage. The examples below use a static HTML site
+(the canonical case) but the model applies to any format.
 
 ### What an agent needs to know
 
-An agent working on a site managed by this tool only needs to understand:
+An agent working on a tree managed by this tool only needs to understand:
 
-1. **Pages are `.html` files at the root.** One file = one route. `ls *.html` shows the sitemap.
-2. **Shared markup lives in `fragments/`.** Edit `fragments/body-open.html` to change the nav across all pages. Run `fragments sync`.
-3. **Every file is always valid HTML.** No templates, no placeholders, no build output. What's on disk is what renders.
+1. **Target files live where you point it.** One file = one route/document.
+   `ls` shows the tree.
+2. **Shared content lives in `_fragments/`.** Edit `_fragments/nav.html` to
+   change the nav everywhere. Run `fragments sync`.
+3. **Every file is always valid in its own format.** No templates, no
+   placeholders, no build output. What's on disk is what renders.
 
 Three things to know. One command to run.
 
-No component tree to trace. No import graph to resolve. No build cache to invalidate. No source-vs-output distinction. The agent edits one file, runs one command, and the change propagates.
+No component tree to trace. No import graph to resolve. No build cache to
+invalidate. No source-vs-output distinction. The agent edits one file, runs one
+command, and the change propagates.
 
 ### Bulk operations become trivial
 
 | Task | Without tool | With tool |
 |------|-------------|-----------|
-| Update nav link across 30 pages | Edit 30 files | Edit `fragments/body-open.html` (1 file) |
-| Change price in 6 locations | Edit 6 files, hope you got them all | Edit `fragments/pricing-amount.html` (1 file) |
-| Update testimonials on 3 pages | Copy-paste HTML into 3 files | Edit `fragments/testimonials.html` (1 file) |
-| Swap CTA button style site-wide | Edit every page's CTA markup | Edit `fragments/cta.html` (1 file) |
-| Add a new page with full chrome | Copy another page, manually sync head/nav/footer | `fragments init about.html && fragments sync` |
-| Audit what's shared vs. page-specific | Read every file, diff them | `ls fragments/` — shared. Everything else is page-specific. |
+| Update nav link across 30 pages | Edit 30 files | Edit `_fragments/nav.html` (1 file) |
+| Change price in 6 locations | Edit 6 files, hope you got them all | Edit `_fragments/pricing-amount.html` (1 file) |
+| Sync a license header across all source files | Edit every file | Edit `_fragments/license.txt`, mark each file once |
+| Keep a shared CI snippet identical in 4 workflow YAMLs | Copy-paste, drift | Edit `_fragments/ci-steps.yaml` (1 file) |
+| Audit what's shared vs. file-specific | Read every file, diff them | `ls _fragments/` — shared. Everything else is local. |
 
 ### Error surface is small
 
 An agent can break things in exactly two ways:
 1. Edit a marker region by hand (overwritten on next sync — self-healing).
-2. Malform an HTML comment marker (detectable: `fragments check` reports unpaired markers).
+2. Malform a comment marker (detectable: `fragments check` reports unpaired or
+   duplicate markers).
 
-That's it. There are no unresolved variables, no missing data files, no template syntax errors. Every file is always valid HTML.
-
-Compare this to a React app where an agent can break the build by misplacing an import, introducing a type error, creating a circular dependency, or passing the wrong prop type. The error surface with raw HTML + this tool is fundamentally smaller.
+That's it. There are no unresolved variables, no missing data files, no template
+syntax errors. Every file is always valid in its native format.
 
 ## Capabilities
 
-The core model is **sync**: marked regions in page files are kept identical to source files in `fragments/`. Every page is always valid, self-contained HTML — before sync, during sync, after sync. There is no intermediate template state.
+The core model is **sync**: marked regions in target files are kept identical to
+source files in `_fragments/`. Every target is always valid, self-contained
+content — before sync, during sync, after sync. There is no intermediate
+template state.
 
 ### Shared fragments
 
@@ -115,15 +179,17 @@ The core model is **sync**: marked regions in page files are kept identical to s
 <!-- /fragment:head -->
 ```
 
-Marked regions replaced with contents of `fragments/<name>.html`. This is the `#include` of HTML.
-
-The key property: the content between markers is **real HTML that renders**. Before sync runs, the page works. After sync runs, the page works. The markers are standard HTML comments — invisible to browsers. No syntax foreign to HTML ever appears in a page file.
+Marked regions replaced with contents of `_fragments/<name>`. This is the
+`#include` of plain files. The content between markers is **real content that
+renders/runs**. Before sync, the file works. After sync, the file works. The
+markers are standard comments in the file's format — invisible to the
+renderer/interpreter.
 
 ### Dynamic fragment discovery
 
-Any `fragments/<name>.html` file becomes a syncable fragment. Pages opt in by including the marker pair. No hardcoded list, no configuration needed.
-
-A price block, a CTA row, a testimonial grid, a feature comparison table — each becomes a `fragments/<name>.html` file. Pages that share it include the marker pair. An agent edits one file, runs sync, and every page updates.
+Any non-hidden file in `_fragments/` becomes a syncable fragment, named by its
+stem. Targets opt in by including the marker pair. No hardcoded list, no
+per-fragment configuration.
 
 One primitive, unlimited fragments, full coverage.
 
@@ -132,55 +198,43 @@ One primitive, unlimited fragments, full coverage.
 Optional `fragments.toml` at the project root:
 
 ```toml
-marker_prefix = "fragment"     # prefix in <!-- PREFIX:name --> markers
+marker_prefix = "fragment"     # prefix in the <prefix>:name markers
 fragments_dir = "_fragments"   # folder containing fragment source files
-target_dir    = "."            # where pages live, relative to project root
-exclude_dirs  = []             # subdirectories to skip when scanning for pages
+target_dir    = "."            # where target files live, relative to root
+exclude_dirs  = []             # subdirectories to skip when scanning
 max_depth     = 5              # max walk depth from target_dir
+
+# Extend or override the built-in comment-syntax table. Key = file extension
+# (or file name for extensionless files). Value = [open, close]; an empty
+# close means a line comment terminated by end-of-line.
+[syntax]
+njk = ["{#", "#}"]   # Nunjucks block comment
 ```
 
-All fields are optional. Missing file = all defaults. The `_fragments` default uses an underscore prefix so static-site hosts (CF Pages, Eleventy, Jekyll, etc.) treat the folder as infrastructure and skip it during deploy. Different projects can use different conventions — old projects can set `marker_prefix = "html-sync"` for backwards compatibility, or populate `exclude_dirs` with project-specific folders (`dist`, `build`, `public`, `node_modules`, `css`, `fonts`).
+All fields are optional; a missing file means all defaults. Notable defaults:
 
-#### Custom extract candidates
+- **`exclude_dirs` is empty** — config over convention. The core ships no
+  built-in excludes; each consumer declares what it wants skipped. Format-shaped
+  default sets (`css`, `fonts`, `_assets`, `dist`, `build`, `node_modules`, …)
+  belong in a consumer's config layer (e.g. pagekit) or a per-project
+  `fragments.toml`, not the primitive.
+- **`fragments_dir = "_fragments"`** — the underscore prefix makes static-site
+  hosts (CF Pages, Eleventy, Jekyll) treat the folder as infrastructure and skip
+  it during deploy.
 
-`fragments extract` ships with six built-in candidates (`<nav>`, `<footer>`, `<header>`, `.navbar`, `.site-header`, `.site-footer`). Sites with non-standard layouts add their own — user entries are **appended** to the built-ins, not a replacement:
-
-```toml
-[[extract.candidates]]
-name = "sidebar"           # fragment basename; produces fragments/sidebar.html
-selector = "aside.sidebar" # CSS selector to find the element in the parsed DOM
-tag = "aside"              # HTML tag name (used to walk the raw source)
-```
-
-All three fields are required per entry. `tag` is needed because scraper normalizes attributes — to insert markers into the original source, we walk same-tag spans and parse each candidate to find the byte-exact match.
-
-#### Recommended excludes for common site conventions
-
-Defaults cover asset/build folders that most sites have (`node_modules`, `css`, `fonts`, `_assets`). Per-site additions worth considering, depending on layout:
-
-| Folder | Why exclude |
-|---|---|
-| `backups/` | Date-stamped prior crawls. If a backup page contains markers, sync will silently rewrite it against current fragments — destroying the as-of snapshot |
-| `mockups/` | Design exploration drafts. Same risk as backups when copied from a marked-up live page |
-| `_audit/` | One-off audit artifacts |
-| `dist/`, `build/`, `public/` | Generated output of an upstream build (if any) |
-| `archive/`, `_archive/` | Frozen historical pages |
-
-The defaults stay conservative — only universal asset folders. Sites that use any of the above should add to their own `fragments.toml`:
-
-```toml
-exclude_dirs = ["node_modules", "tools", "css", "fonts", "_assets", "backups", "mockups", "_audit"]
-```
+Old projects can set `marker_prefix = "html-sync"` for backwards compatibility.
 
 ## Patterns
 
 ### Shared-subset extraction (head with per-page title/description)
 
-When a region is *partially* shared — most of it identical across pages, but a few values per-page — extract only the shared subset. Don't try to share the whole region.
+When a region is *partially* shared — most of it identical across files, but a
+few values per-file — extract only the shared subset. Don't try to share the
+whole region.
 
-**Example: HTML `<head>`.** Shared across pages: charset, viewport, font preloads, stylesheet links, OG image base URL. Per-page: `<title>`, `<meta description>`, canonical URL, page-specific OG metadata.
-
-A flat fragment can't hold per-page values. The right shape:
+**Example: HTML `<head>`.** Shared across pages: charset, viewport, font
+preloads, stylesheet links. Per-page: `<title>`, `<meta description>`, canonical
+URL.
 
 ```html
 <!-- in every page's <head>: -->
@@ -192,16 +246,20 @@ A flat fragment can't hold per-page values. The right shape:
   <meta charset="utf-8">                                     <!-- shared, synced -->
   <meta name="viewport" content="width=device-width">
   <link rel="stylesheet" href="/css/styles.css">
-  <link rel="preload" href="/fonts/inter.woff2" as="font">
   <!-- /fragment:head-assets -->
 </head>
 ```
 
-Edit `fragments/head-assets.html` once; every page's shared head subset updates. Per-page values stay inline, hand-edited where they belong.
+Edit `_fragments/head-assets.html` once; every page's shared head subset
+updates. Per-page values stay inline, hand-edited where they belong.
 
-This pattern resolves the "fragments can't do variables" friction without breaking the file-is-truth invariant. Apply it whenever a region has the shape `[mostly-shared] + [a few per-page values]`.
+This pattern resolves the "fragments can't do variables" friction without
+breaking the file-is-truth invariant. Apply it whenever a region has the shape
+`[mostly-shared] + [a few per-file values]`.
 
 ## Considered and deferred
+
+The reasoning below is format-neutral; the HTML examples are illustrative.
 
 ### Partials (one-shot includes) — deferred
 
@@ -210,14 +268,22 @@ This pattern resolves the "fragments can't do variables" friction without breaki
 <!-- include:cta-row -->
 ```
 
-Would be replaced inline with contents of `partials/cta-row.html`. Unlike shared fragments, the marker disappears after insertion — the partial content becomes page-specific HTML.
+Would be replaced inline with contents of `partials/cta-row`. Unlike shared
+fragments, the marker disappears after insertion — the partial content becomes
+file-specific.
 
-**Why deferred:** Partials introduce a second mechanism alongside sync, and the "insert then customize" pattern creates problems for agents:
-- After insertion, the agent can't tell which HTML came from a partial vs. was written by hand.
-- If the partial source is updated and re-inserted, page-specific modifications are lost.
-- The agent now has to reason about two different systems (sync vs. include) instead of one.
+**Why deferred:** Partials introduce a second mechanism alongside sync, and the
+"insert then customize" pattern creates problems for agents:
+- After insertion, the agent can't tell which content came from a partial vs.
+  was written by hand.
+- If the partial source is updated and re-inserted, file-specific modifications
+  are lost.
+- The agent now has to reason about two different systems (sync vs. include)
+  instead of one.
 
-**How sync handles this instead:** If content is shared, use a sync fragment — the agent edits `fragments/<name>.html` and it propagates. If content is page-specific, the agent writes it directly in the page file (agents are good at this). There's no in-between "insert once then diverge" state to track.
+**How sync handles this instead:** If content is shared, use a sync fragment. If
+content is file-specific, the agent writes it directly. There's no in-between
+"insert once then diverge" state to track.
 
 ### Variables — deferred
 
@@ -226,180 +292,167 @@ Would be replaced inline with contents of `partials/cta-row.html`. Unlike shared
 <p class="pricing-price">{{package.price}}</p>
 ```
 
-**Why deferred:** `{{package.price}}` is not HTML. A file containing it doesn't render correctly in a browser — the user sees literal `{{package.price}}` instead of `€2,500`. This creates two classes of files: source templates (broken in browser) and compiled output (works in browser). That's exactly the source/dist split we're avoiding.
+**Why deferred:** `{{package.price}}` is not valid in the host format. A file
+containing it doesn't render correctly — the user sees literal
+`{{package.price}}`. This creates two classes of files: source templates (broken)
+and compiled output (works). That's exactly the source/dist split we're avoiding.
 
-**How sync handles this instead:** If a price appears on multiple pages, put it in a fragment. The fragment contains the real price as real HTML. Every page that includes the marker pair gets the real value. The agent edits `fragments/pricing-amount.html` (which contains `€2,500`) and runs sync. Same single-edit propagation, but every file on disk is valid HTML at all times.
+**How sync handles this instead:** If a value appears in multiple files, put it
+in a fragment containing the real value. Every file that includes the marker
+gets the real value. Same single-edit propagation, but every file on disk is
+always valid.
 
 ### Repeat blocks — deferred
 
-```html
-<!-- Considered: -->
-<!-- repeat:testimonials -->
-<figure class="testimonial">
-  <blockquote>{{quote}}</blockquote>
-</figure>
-<!-- /repeat:testimonials -->
-```
+**Why deferred:** Depends on variables, shares the same validity problem. A
+repeat template is not renderable content — it shows one placeholder instance.
 
-**Why deferred:** Depends on variables (`{{quote}}`), shares the same validity problem. A repeat template is not renderable HTML — it shows one placeholder instance instead of real content.
-
-**How sync handles this instead:** The expanded testimonials block (with real content) lives in `fragments/testimonials.html`. An agent editing testimonials edits that fragment file directly — adding, removing, or reordering `<figure>` elements in real HTML. Then sync propagates it to every page that includes the `<!-- fragment:testimonials -->` markers. More verbose than a JSON array, but every file is always valid HTML.
+**How sync handles this instead:** The expanded block (with real content) lives
+in a fragment. An agent edits that file directly — adding, removing, reordering
+real elements — then sync propagates it.
 
 ### Conditionals — deferred
 
-```html
-<!-- Considered: -->
-<!-- if:stripe_live -->
-<a href="https://buy.stripe.com/...">Buy now</a>
-<!-- else -->
-<a href="pricing.html#offer">View offer</a>
-<!-- /if:stripe_live -->
-```
+**Why deferred:** Conditional blocks mean the file on disk contains content that
+won't be served. The file doesn't match what the user sees. The
+template-vs-output gap again.
 
-**Why deferred:** Conditional blocks mean the file on disk contains markup that won't be served. The file doesn't match what the user sees. This is the template-vs-output gap again.
-
-**How to handle instead:** Maintain separate fragment variants if needed (`fragments/cta-live.html`, `fragments/cta-preview.html`) and swap which one is active. Or handle at the edge (Cloudflare Workers can rewrite HTML at serve time using lol_html). Environment-specific concerns belong at the serving layer, not in the source files.
+**How to handle instead:** Maintain separate fragment variants
+(`_fragments/cta-live.html`, `_fragments/cta-preview.html`) and swap which is
+active. Or handle at the edge (e.g. Cloudflare Workers rewriting at serve time).
+Environment-specific concerns belong at the serving layer, not the source files.
 
 ### Nested fragments — deferred
 
-```html
-<!-- In fragments/nav.html: -->
-<nav>
-  <!-- fragment:logo -->
-  <svg>...</svg>
-  <!-- /fragment:logo -->
-  <a href="/">Home</a>
-</nav>
-```
-
-Fragment source files would reference other fragments via markers. The tool resolves nested references in memory before injecting into pages — `logo.html` content replaces the marker inside `nav.html`, then the fully-resolved `nav.html` replaces markers in pages. Source files on disk are never written to.
-
-**Motivating case:** Large SVG logos or complex reusable blocks that appear inside other fragments. An agent extracts the SVG into `fragments/logo.html` once and never rewrites it — the composition happens automatically at sync time.
+Fragment source files would reference other fragments via markers; the tool
+resolves nested references in memory before injecting into targets. Source files
+on disk are never written to.
 
 **Why deferred:**
+- **Cycle detection required.** `a` → `b` → `a` loops; needs topological sort or
+  a recursion depth cap.
+- **Source/output divergence.** A fragment source on disk would contain markers
+  while targets receive the resolved version — a softer form of the
+  template-vs-output gap the tool avoids.
+- **Debugging complexity.** Today wrong content traces to one source file; with
+  nesting you trace through composition layers.
+- **Ordering sensitivity.** Current sync iterates alphabetically; nesting needs
+  dependency-aware order.
 
-- **Cycle detection required.** If `a.html` references `b` and `b.html` references `a`, resolution loops. Needs topological sort or recursion depth cap.
-- **Source/output divergence.** `fragments/nav.html` on disk would contain markers, but pages receive the resolved version. This is a softer form of the template-vs-output gap the tool avoids. Fragment sources become a kind of intermediate format.
-- **Debugging complexity.** Today, wrong content in a page traces to one source file. With nesting, you trace through composition layers.
-- **Ordering sensitivity.** Current sync iterates alphabetically. Nesting requires dependency-aware resolution order.
+**If reconsidered:** In-memory resolution (sources untouched on disk) is the
+conservative path. The implementation is small — resolve fragment content
+through `apply_fragments` before using it as replacement content — but the model
+change is meaningful.
 
-**If reconsidered:** In-memory resolution (sources untouched on disk) is the conservative path. The implementation is small — resolve fragment content through `apply_fragments` before using it as replacement content — but the model change is meaningful.
+### Reverse sync (target → source, `fragments pull`) — deferred
 
-### Extract command with auto-wrap — deferred
-
-```bash
-fragments extract nav --from index.html
-```
-
-Would create `fragments/nav.html` from a block in an existing page, then scan all HTML files for exact matches of that block and wrap them with marker pairs automatically. Turns a manually-duplicated block into a managed fragment in one command.
-
-**Motivating case:** An agent has already built a 30-page site with the same nav copy-pasted into every page. Retroactively extracting it into a fragment currently requires editing every file by hand to add markers. The extract command would automate this.
-
-**Why deferred:**
-
-- **Exact matching is brittle.** A trailing newline, different indentation, or extra whitespace in any page copy causes a silent miss. The tool would report "wrapped 18 of 30 pages" and the remaining 12 stay unmanaged with no obvious reason why.
-- **Normalization is risky.** Collapsing whitespace for fuzzy matching improves recall but opens false positives — wrapping blocks that look similar but aren't the same content.
-- **Divergent copies.** Pages may have slightly different versions of the "same" block. Which becomes the canonical source? First match? Longest? Agent-specified? Every heuristic has failure modes.
-- **High-stakes mutation.** The command modifies every matched file in one operation. A bug in matching logic corrupts the site. Requires a `--dry-run` mode at minimum.
-
-**If reconsidered:** The safest version is explicit and conservative: agent specifies the source file and the exact block (by line range or content), tool creates the fragment, then only wraps pages where a byte-exact match is found. Pages that don't match are reported but untouched. The current explicit marker model is less convenient but more reliable — which is what agents need.
+Would let an edit inside a target's marker region propagate back to the fragment
+source. Deferred: it inverts the single-source-of-truth direction and reopens
+"which copy wins" questions that the one-way model deliberately closes.
 
 ### When these might return
 
-If the sync-only model proves insufficient for a real use case that can't be solved with more granular fragments, these capabilities can be reconsidered. The bar is: does the benefit outweigh the cost of added complexity and new failure modes? For now, the answer is no — sync with explicit markers gets us very far.
+If the sync-only model proves insufficient for a real use case that can't be
+solved with more granular fragments, these can be reconsidered. The bar is: does
+the benefit outweigh the cost of added complexity and new failure modes? For now
+the answer is no — sync with explicit markers gets us very far.
 
 ## What this is NOT
 
-- **Not a template engine.** No variables, no loops, no expressions, no placeholder syntax. Every file is valid in its native format at all times. See "Considered and deferred" for why.
-- **Not a build system.** It transforms existing files in place. You own the file tree.
-- **Not format-aware.** Files are treated as text streams with marker pairs. For format-specific operations (HTML scaffolding, DOM-aware extraction, link integrity), see [`pagekit`](../pagekit).
-- **Not a human-first DX tool that agents happen to use.** The primary user is an AI agent. The design choices optimize for agent legibility, predictable file I/O, small error surfaces, and one-command propagation. Humans benefit from the same properties, but the design is agent-first.
+- **Not a template engine.** No variables, no loops, no expressions, no
+  placeholder syntax. Every file is valid in its native format at all times. See
+  "Considered and deferred" for why.
+- **Not a build system.** It transforms existing files in place. You own the
+  file tree.
+- **Not a parser.** It is format-*aware* only to the extent of knowing each
+  format's comment delimiters (so markers are valid comments). It does not parse
+  or understand file structure. For structure-aware operations (HTML
+  scaffolding, DOM extraction, link integrity), see [`pagekit`](../pagekit).
+- **Not a human-first DX tool that agents happen to use.** The primary user is an
+  AI agent. The design optimizes for agent legibility, predictable file I/O,
+  small error surfaces, and one-command propagation. Humans benefit from the same
+  properties, but the design is agent-first.
 
 ## Architecture
 
 ```
 project-root/
-  index.html            ← pages (you edit these)
-  pricing.html
-  about.html
+  index.html            ← target files (you edit these)
+  style.css
+  deploy.sh
   _fragments/           ← shared regions (synced into marker pairs);
     head.html             underscore-prefixed so deploy hosts skip it
-    body-open.html
-    body-close.html
-    cta.html            ← any shared content block
-    pricing-amount.html
-    testimonials.html
+    notice.txt          ← any shared content block, any extension
+    license.txt
   fragments.toml        ← optional config
-  css/styles.css
-  fonts/
-  favicon.svg
 ```
 
-The binary scans `*.html` at root and replaces every marker region with the corresponding `fragments/<name>.html` contents. One pass, one mechanism. Files are only written when content changes (byte comparison).
+The binary scans `target_dir` for files whose format has a known comment syntax,
+and replaces every marker region with the corresponding `_fragments/<name>`
+contents, using that target's comment delimiters. One pass, one mechanism. Files
+are only written when content changes (byte comparison).
+
+### Module map
+
+- `syntax.rs` — `CommentSyntax`, the built-in extension→syntax table, and config
+  override resolution.
+- `config.rs` — `fragments.toml` schema, defaults, and `syntax_for(path)`.
+- `sync.rs` — fragment loading, marker scanning/replacement, `sync_all` /
+  `check_all` and their `_with(hooks)` variants, the `SyncHook` trait.
+- `list.rs`, `doctor.rs` — reference mapping and health checks.
+- `watch.rs` — debounced re-sync loop.
+
+### Write durability
+
+Sync writes targets via a direct truncate-and-write (`fs::write`), not
+tempfile+rename. A SIGKILL or power loss mid-write can leave a partial file;
+recovery is `fragments sync` again (idempotent). This trade keeps inode, perms,
+and xattrs intact and was chosen deliberately — see `tasks/arc.md`.
 
 ## Modes
 
 | Command | Behavior |
 |---------|----------|
-| `fragments sync` | One-shot: process all pages |
-| `fragments watch` | Sync, then watch `fragments/` for changes |
-| `fragments check` | Dry-run: exit 1 if any page is stale or has unpaired markers (CI/pre-commit) |
-| `fragments init <file>` | Create new page with marker pairs for all fragments |
-| `fragments extract` | Detect duplicated DOM blocks across pages, extract to fragments/, insert markers |
-| `fragments list` | List every fragment and how many pages reference it |
+| `fragments sync` | One-shot: process all target files (default) |
+| `fragments watch` | Sync, then watch `_fragments/` for changes |
+| `fragments check` | Dry-run: exit 1 if any target is stale or has unpaired/duplicate markers (CI/pre-commit) |
+| `fragments list` | List every fragment and how many files reference it |
 | `fragments config` | Print the effective config (defaults merged with `fragments.toml`) |
-| `fragments doctor` | Health check: surface orphan fragments, orphan markers, unpaired markers; exit 1 on issues |
+| `fragments doctor` | Health check: orphan fragments, orphan markers, unpaired/duplicate markers; exit 1 on issues |
+
+(`init` and `extract` are pagekit commands, not fragments.)
 
 ## Design principles
 
-1. **The file is the truth.** After sync, every `.html` file is a valid, self-contained HTML document. No runtime resolution. What's on disk is what gets served. An agent reads the file and sees what the user sees.
-2. **The folder is the site.** `ls` shows you every route. Double-click to preview. Upload to deploy. No build artifacts, no `dist/` directory. An agent runs `ls *.html` and knows the sitemap.
-3. **Output = input.** The tool writes the same format it reads. You can hand-edit any output file and it remains valid input. An agent can edit output files without understanding the tool.
-4. **Preserve authorship.** Whitespace, comments, attribute order — all preserved. Diffs are minimal and reviewable.
-5. **Single binary, zero dependencies.** No `node_modules`, no package manager, no version matrix. Copy the binary, it works. An agent doesn't need to resolve dependency conflicts or manage lockfiles.
-6. **One edit, one command, full propagation.** The agent edits one file in `fragments/`, runs `fragments sync`, and the change appears across all affected pages. No manual coordination.
-7. **Machine-verifiable correctness.** `fragments check` exits non-zero if anything is stale, unresolved, or malformed. An agent can run it after every edit to confirm the site is consistent — no visual inspection needed.
-
-## Agent workflow
-
-A typical agent session managing a 30-page marketing site:
-
-```
-1. Agent reads task: "Update pricing from €2,500 to €2,900 and add a new testimonial"
-
-2. Agent runs: ls *.html → sees all 30 pages (sitemap)
-   Agent runs: ls fragments/ → sees all shared fragments
-
-3. Agent edits fragments/pricing-amount.html: changes €2,500 to €2,900
-   Agent edits fragments/testimonials.html: adds a new <figure> block
-
-4. Agent runs: fragments sync
-   → 12 pages updated (those with pricing-amount or testimonials markers)
-   → 18 pages unchanged
-
-5. Agent runs: fragments check → exit 0 (all consistent)
-
-6. Agent commits and deploys.
-```
-
-Total files the agent touched: 2 (both in `fragments/`).
-Total files that changed on disk: 12.
-Zero chance of missing a page or introducing inconsistency.
-Every file on disk — source and output — is valid HTML at every step.
+1. **The file is the truth.** After sync, every file is valid, self-contained
+   content in its native format. No runtime resolution. What's on disk is what
+   gets served.
+2. **The folder is the project.** `ls` shows you everything. No build artifacts,
+   no `dist/` directory.
+3. **Output = input.** The tool writes the same format it reads. Hand-edit any
+   output file and it remains valid input.
+4. **Preserve authorship.** Whitespace, comments, attribute order — all
+   preserved. Diffs are minimal and reviewable.
+5. **Single binary, zero runtime dependencies.** No `node_modules`, no package
+   manager, no version matrix.
+6. **One edit, one command, full propagation.**
+7. **Machine-verifiable correctness.** `fragments check` exits non-zero if
+   anything is stale or malformed.
 
 ## Implementation status
 
 | Phase | What | Status |
 |-------|------|--------|
 | 0 | Shared fragments (3 fixed names) | Done |
-| 1 | Dynamic fragment discovery (`fragments/<any>.html`) | Done |
+| 1 | Dynamic fragment discovery | Done |
 | 1b | Manifest config (`fragments.toml`) | Done |
-| 1c | Init command (`fragments init <file>`) | Done |
 | 2 | Rename from `html-sync` to `fragments` | Done |
-| 3 | Extract command (duplicate-detection variant: `fragments extract`) | Done |
-| — | Extend beyond HTML to other text formats | Future |
+| 3 | Fork: HTML helpers (`init`, `extract`) moved to pagekit; fragments exposes a library | Done |
+| 4 | `SyncHook` API + hookable watch (v0.6.x) | Done |
+| 5 | **Format-agnostic comment syntax** + `[syntax]` config (v0.7.0) | Done |
 | — | Nested fragments (composition within fragment sources) | Deferred |
-| — | Extract command with auto-wrap (exact-match all pages from one source) | Deferred |
-| — | Reverse sync (page → source, `fragments pull`) | Deferred |
+| — | Partials / variables / repeats / conditionals | Deferred |
+| — | Reverse sync (target → source, `fragments pull`) | Deferred |
 
-Partials, variables, repeats, conditionals, nested fragments, extract, and reverse sync are documented in "Considered and deferred" above. They can be reconsidered if the sync-only model proves insufficient for a concrete use case.
+Deferred items are documented in "Considered and deferred" above. They can be
+reconsidered if the sync-only model proves insufficient for a concrete use case.
