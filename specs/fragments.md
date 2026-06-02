@@ -420,7 +420,9 @@ and xattrs intact and was chosen deliberately — see `tasks/arc.md`.
 | `fragments config` | Print the effective config (defaults merged with `fragments.toml`) |
 | `fragments doctor` | Health check: orphan fragments, orphan markers, unpaired/duplicate markers; exit 1 on issues |
 
-(`init` and `extract` are pagekit commands, not fragments.)
+`check`, `list`, and `doctor` accept `--json` for machine-readable output
+(agent/CI consumers); each emits a stable `kind`-tagged schema and exit codes
+are unchanged. (`init` and `extract` are pagekit commands, not fragments.)
 
 ## Design principles
 

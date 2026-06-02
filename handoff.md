@@ -1,45 +1,43 @@
 # fragments — handoff baton
 
-_Written 2026-06-02 at rotation checkpoint. Seat: fragments worker. HEAD `cec77b3`, tree clean, `main` == `origin/main`._
+_Written 2026-06-02 at rotation checkpoint. Seat: fragments worker. HEAD `fafa181`, tree clean, `main` == `origin/main`._
 
 ## TL;DR for the next agent
 
-fragments is **production-ready and shipped at v0.7.0**. There is exactly **one open item**, and it's blocked on Felix, not on you: publishing to crates.io (needs a registry token). Don't invent other work — the arc is genuinely drained except for deferred-by-design backlog. Canonical state lives in `tasks/arc.md`; this baton just points at the one live thread.
+fragments is **production-ready, published, and live on crates.io as [`fragments-sync`](https://crates.io/crates/fragments-sync)**. Two things happened this session beyond the v0.7.0 release: (1) the crates.io publish completed (the prior baton's one open item), and (2) a small QoL pass shipped (library purity + `--json`). There is **one open item**, and it's a Felix gate, not a blocker on you: a minor version bump + `cargo publish` to ship the QoL changes (the token is now saved and the crates.io email is verified, so it's literally one command). Canonical state lives in `tasks/arc.md`.
 
-## The one open item — crates.io publish (BLOCKED on Felix)
+## The one open item — republish QoL changes (Felix-gated, ~one command)
 
-- **Status:** package is publish-ready (`cargo package` passes clean). The only blocker is auth — no crates.io token exists on the machine (`~/.cargo/credentials.toml`, legacy file, and `CARGO_REGISTRY_TOKEN` env all absent).
-- **Felix authorized FULL PUBLISH** earlier this session (tag + GitHub Release done; crates.io is the remaining half).
-- **To finish the moment a token exists:**
-  ```bash
-  cd ~/omni/products/fragments
-  # Felix runs: cargo login   (token from https://crates.io/settings/tokens)
-  cargo publish               # then you run this
-  ```
-  The `fragments` crate name appeared unclaimed. This is an irreversible/public action — already authorized, but it requires Felix's token, so it stays parked until he provides one.
-- Also tracked in `tasks/arc.md` → **Blocked**.
+- The working tree on `main` (HEAD `fafa181`) has unreleased changes (library purity + `--json`). crates.io still serves **v0.7.0**, which predates them.
+- To ship: bump `version` in `Cargo.toml` (these are additive features → **0.8.0**), add a CHANGELOG `[0.8.0]` heading (content already drafted under `[Unreleased]`), tag, and `cargo publish`.
+- Auth is **no longer a blocker**: the crates.io token is saved (`~/.cargo/credentials.toml`) and Felix verified his crates.io email this session. `cargo publish` is irreversible/public, so it stays Felix's call — but it's now a single command, not a setup task.
+- Tracked in `tasks/arc.md` → the QoL Resolved entry notes "Unreleased on crates.io."
 
-## What shipped this session (v0.7.0)
+## What shipped this session
 
-The headline: fragments **claimed** "format-agnostic" everywhere but was hardcoded HTML-only (`.html` filter + `<!-- -->` markers). Now true in code.
+**1. crates.io publish (the prior baton's blocked item).** Published as `fragments-sync v0.7.0`. The bare `fragments` name was **squatted** (abandoned v0.1.0 from 2021-07-29 — the prior baton wrongly assumed it was unclaimed). Crate name is `fragments-sync`; the **binary/CLI command and `use fragments::` lib name stay `fragments`** (`[[bin]]`/`[lib] name = "fragments"`). So `cargo install fragments-sync` installs a `fragments` command. Felix supplied the token + verified email mid-session.
 
-- **Format-agnostic comment syntax** — `src/syntax.rs` maps file extension → comment delimiters (SGML `<!-- -->`, C-family `/* */`, hash `#`, dash `--`); `[syntax]` config extends/overrides it. One fragment syncs into HTML/CSS/JS/YAML/shell/SQL/Markdown, each valid in its native format. Fragment name = file stem; duplicate stems error.
-- **Hardening:** line-comment name-boundary safety (`nav` ≠ `navbar`), no-panic name derivation, duplicate-name detection.
-- **Distribution:** dual `MIT OR Apache-2.0` (both LICENSE files), Cargo.toml metadata, CHANGELOG.md, `.github/workflows/release.yml` (tagged cross-platform binaries; `checkout@v5`).
-- **Released:** `v0.7.0` GitHub Release is **live, draft=false, 3 binaries attached** (linux-x86_64, macOS arm64/x86_64). Initial release run failed on a missing `contents: write` permission — fixed in the workflow and re-fired green.
-- **Docs reconverged to match the binary:** `README.md`, `AGENTS.md`, `tasks/arc.md`, and the 405-line `specs/fragments.md` (it had documented `init`/`extract` as fragments commands — those moved to pagekit in the Stage-2 fork — and listed format-agnostic as "Future").
+**2. QoL pass (`fafa181`), both backward-compatible:**
+- **Library purity.** `sync_all`/`sync_all_with` used to `println!` each updated path from *inside the library*, leaking progress lines into consumer (pagekit) stdout. That formatting moved to the `fragments` binary. Both keep their `usize` return (pagekit unaffected). New `sync_all_paths`/`sync_all_paths_with` return the updated `Vec<PathBuf>` for callers wanting the list.
+- **`--json`** on `check`/`list`/`doctor` for agent/CI consumers — stable `kind`-tagged schemas via new `collect()` functions and serializable report types (`CheckReport`, `ListReport`/`FragmentRef`, `DoctorReport`/`DoctorIssue`). Exit codes unchanged. `doctor` orphan-marker output is now deterministically sorted. Added `serde_json` dep.
 
 ## Verification done (don't redo blindly)
 
 - `cargo fmt --check`, `clippy -D warnings`, `cargo package` — all clean.
-- **43 tests pass** (27 integration + 7 hooks + 9 new `tests/format_agnostic.rs`).
-- Smoke-tested the installed binary on a real mixed-format dir (one fragment → HTML + CSS + YAML).
-- **Consumer safe:** `pagekit` (path-dep at `../pagekit`) builds and its **107 tests pass** against v0.7.0. The high-level lib API (`sync_all_with`/`check_all_with`/`watch::run_with`/`Config`/`SyncHook`) is unchanged; only `referenced_fragment_names` gained a `CommentSyntax` arg (pagekit doesn't use it).
+- **46 tests pass** (27 integration + 9 format_agnostic + 7 hooks + 3 new `tests/json_output.rs`).
+- **Consumer safe:** `pagekit`'s **112 tests pass** against `fafa181` (verified by building+testing pagekit against the on-disk fragments). The QoL change is additive; `list_fragments`/`run_doctor` signatures are unchanged.
+
+## pagekit coordination (resolved — don't re-touch)
+
+- pagekit and fragments share **one on-disk directory** via a path-dep. The crate rename to `fragments-sync` broke pagekit's `fragments = { path = "../fragments" }` (cargo resolves path deps by *package name*).
+- The **pagekit seat owns and already fixed this** — commit `1b67de8 chore: adopt fragments-sync package name` adds `package = "fragments-sync"` to pagekit's dep (the dep *key* stays `fragments`, so pagekit's `use fragments::` is unchanged). **Do not edit pagekit's Cargo.toml from this seat** — it's their scope, and it's done.
+- pagekit independently added its own `--json`/report work (`2bab3de`) in parallel — unrelated to fragments' `--json`.
 
 ## Do NOT do
 
-- Don't re-fire or re-tag the v0.7.0 release — it's live and correct.
-- Don't invent backlog work. Remaining items in `tasks/arc.md` (nested fragments, multi-line block fragments, reverse sync) are **deferred by design** with no consumer pulling — respect `subtract-before-building`.
+- Don't re-fire/re-tag the v0.7.0 GitHub Release or re-publish v0.7.0 to crates.io — both are live and correct.
+- Don't invent backlog. Deferred-by-design items in `tasks/arc.md` (nested fragments, multi-line block fragments, reverse sync) and declined QoL (scaffolding, nested fragment subdirs, colored UI) have **no consumer pulling** — respect `subtract-before-building`. Scaffolding specifically belongs to pagekit by the fork boundary.
+- Don't touch pagekit's repo — separate seat, separate scope.
 
 ## Minor flag (not acted on)
 
