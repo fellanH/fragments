@@ -9,7 +9,10 @@ jobs:
   release:
     name: Release
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write  # required by action-gh-release to create the release and upload assets
     strategy:
+      fail-fast: false  # one target failing must not cancel the others' uploads
       matrix:
         include:
           - os: ubuntu-latest
