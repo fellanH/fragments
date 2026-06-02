@@ -4,7 +4,7 @@ Single Rust binary that syncs marker-region content across files. One primitive 
 
 For HTML-specific helpers (page scaffolding, DOM-aware extraction, link integrity), see the sibling [`pagekit`](../pagekit) workspace which composes fragments core.
 
-Tool workspace. Worker-tier per `harness/rules/omni/tier-architecture.md`.
+Tool workspace. Worker-tier per `omni-os/omni-system/packages/rules/omni/tier-architecture.md`.
 
 ## Boot
 
@@ -59,10 +59,8 @@ This binary does NOT:
 
 ## Canon rules especially load-bearing here
 
-- `harness/rules/workflow/build-not-dev.md` — release builds, not dev watchers
-- `harness/rules/omni/dispatch-verification.md` — verify by running the binary, not reading the build log
-- `harness/rules/workflow/valuable-deliverable.md` — deliverable is the working installed binary plus passing test suite
-- `harness/rules/workflow/subtract-before-building.md` — every deferred capability in `specs/fragments.md` was deferred for a reason; bias toward saying no
+- `omni-os/omni-system/packages/rules/workflow/valuable-deliverable.md` — deliverable is the working installed binary plus passing test suite; verify by running it, not by reading the build log
+- `omni-os/omni-system/packages/rules/workflow/subtract-before-building.md` — every deferred capability in `specs/fragments.md` was deferred for a reason; bias toward saying no
 
 ## Rails
 
