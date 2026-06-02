@@ -1,29 +1,30 @@
 # fragments — handoff baton
 
-_Written 2026-06-02 (autonomy flywheel checkpoint). Seat: fragments worker. HEAD `0c1a4d3`, tree clean, `main` == `origin/main`._
+_Written 2026-06-02 (rotation checkpoint after dogfood pass). Seat: fragments worker. Tree clean, `main` == `origin/main`._
 
 ## TL;DR for the next agent
 
-fragments is **production-ready, published, and live on crates.io as [`fragments-sync` v0.8.0](https://crates.io/crates/fragments-sync)**. The prior baton's one open item — republishing the QoL changes (library purity + `--json`) — **is now shipped** (Felix-gated publish executed this session). **There are no open items.** Canonical state lives in `tasks/arc.md`.
+fragments is **production-ready, published as [`fragments-sync` v0.8.0](https://crates.io/crates/fragments-sync)**, and now **dogfood-validated**: a three-track audit (Felix-requested) confirmed the core is production-ready *as a minimal primitive* with **zero core changes needed** — every piece of friction routed outward to connectors/config/docs, exactly as minimal-core predicts. **No open items on this seat.** Canonical state: `tasks/arc.md`. Audits: `audits/2026-06-02-*.md`.
 
 ## What shipped this session
 
-**1. v0.8.0 release (closes the prior open item).** Bumped `0.7.0 → 0.8.0` (minor — additive features), moved the CHANGELOG `[Unreleased]` block to `[0.8.0] — 2026-06-02`, committed (`2866e9c`), tagged `v0.8.0`, pushed, and ran `cargo publish`. Live on crates.io. The `Release` GitHub Actions workflow fired on the tag to attach cross-platform binaries. Pre-publish gate: `cargo fmt --check` clean, `clippy -D warnings` clean, **46 tests pass**.
+1. **v0.8.0 release** — library purity + `--json` on check/list/doctor; published to crates.io; tag `v0.8.0`; Release workflow attached binaries.
+2. **AGENTS.md reconverge** (`0c1a4d3`) — fixed stale `harness/rules/` → `omni-os/omni-system/packages/rules/`; dropped 2 non-existent rule refs.
+3. **Three-track dogfood** (`6083300`), artifacts in `audits/`:
+   - `production-readiness-bar.md` — 11-dimension gate; all PASS/CLOSED/RESOLVED, no `[CORE]` work emerged. The triage gate held.
+   - `format-agnostic-dogfood.md` — validated v0.7.0 non-HTML sync (md+yaml+css+sql) end-to-end; failure isolation safe; cross-root = symlink pattern. (One `--json` finding was a stale-binary artifact → retracted; verified `--json` on all 3 cmds in v0.8.0.)
+   - `consumer-friction.md` — ~16 live HTML consumers; all friction → pagekit/config, none → core.
+   - Spec gained a "syncing across sibling repos" §Patterns subsection.
 
-**2. AGENTS.md rule-path reconverge (`0c1a4d3`).** The `harness/rules/...` prefix was stale — real rules live under `omni-os/omni-system/packages/rules/` (indexed via `~/.claude/rules/INDEX.md`). Fixed the prefix on the 3 references that resolve (`omni/tier-architecture`, `workflow/valuable-deliverable`, `workflow/subtract-before-building`). **Dropped 2 dangling citations** — `build-not-dev.md` and `dispatch-verification.md` exist in no rules tree; their intent was already covered locally (`cargo build --release` in the build section; "verify by running the binary" folded into the valuable-deliverable line).
+## Open items
 
-## Carried-forward facts (still true)
-
-- Crate name is `fragments-sync` (bare `fragments` was squatted); **binary/CLI command and `use fragments::` lib name stay `fragments`**. `cargo install fragments-sync` installs a `fragments` command.
-- Library purity: `sync_all`/`sync_all_with` keep their `usize` return (pagekit unaffected); the per-file print lives in the binary; `sync_all_paths`/`sync_all_paths_with` return the `Vec<PathBuf>`.
-- `--json` on `check`/`list`/`doctor` — stable `kind`-tagged schemas via `collect()` + serializable report types. Exit codes unchanged.
+**None on this seat.** Two things live elsewhere:
+- **Relayed to pagekit** (feed `dec-1b5f0b5b`, brief `docs/relay-to-pagekit-2026-06-02.md`): exclude_dirs defaults (highest leverage ~30m), raw-vs-pagekit note, `[[fragments]]` template, AGENTS.md prefix fix. Don't action from this seat.
+- **Deferred by Felix:** rolling the shared AGENTS.md "Canon rules" block out as a standing cross-workspace synced fragment (coordination cost vs KISS — revisit later).
 
 ## Do NOT do
 
-- Don't re-publish v0.7.0 or v0.8.0, or re-fire their releases — all live and correct.
-- Don't invent backlog. Deferred-by-design items in `tasks/arc.md` (nested/multi-line block fragments, reverse sync) and declined QoL (scaffolding, nested subdirs, colored UI) have **no consumer pulling** — respect `subtract-before-building`. Scaffolding belongs to pagekit by the fork boundary.
-- Don't touch pagekit's repo — separate seat, separate scope.
-
-## Flag for the pagekit seat (not this seat's scope)
-
-pagekit's `AGENTS.md` carries the **same stale `harness/rules/...` prefix** (and references the same two non-existent rules). Relay to the pagekit seat for the equivalent reconverge; do not fix it from here.
+- Don't re-publish v0.7.0/v0.8.0 or re-fire releases — all live and correct.
+- Don't add core features. The deferred items (variables, partials, nesting, reverse-sync) stay deferred — the dogfood confirmed no consumer needs them. Any new opinion belongs in pagekit/config, not the core (`minimal-core-connectors`).
+- Don't touch pagekit's repo — separate seat; its items are relayed, not yours.
+- Don't action the relayed pagekit items or the deferred cross-workspace fragment from here.
