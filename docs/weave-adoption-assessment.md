@@ -1,4 +1,6 @@
-# weave-site-model adoption — assessment (DECLINE, surfaced for decision)
+# weave-site-model adoption — assessment (DECLINE — RESOLVED at coordinator)
+
+> **Resolution (2026-06-02):** Coordinator (revenue-system) **accepted the decline**; `tas-8fb92245` dropped. This was a coordinator sequencing correction, not Felix-gated — no Felix decision pending. fragments stays the standalone format-agnostic compose-seam primitive (spec §3). Recommendation #3 (weave's `discover` gains fragments' `max_depth` + prefix-exclude generality) was relayed onward to clean-clone as an optional weave enhancement. Record below stands as the rationale.
 
 _Task `tas-8fb92245` (coordinator GREEN dispatch): "Phase 1 weave site-model adoption — replace fragments' private page/asset derivation with weave-site-model, kills duplication #1." Spec: `~/omni/products/clean-clone/docs/core-vs-opinion.md` §5. **Read-only review done; refactor declined pending Felix decision. Reason below — every claim verified against code.**_
 
