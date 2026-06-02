@@ -9,7 +9,7 @@ Tool workspace. Worker-tier per `harness/rules/omni/tier-architecture.md`.
 ## Boot
 
 ```bash
-cd ~/omni/workspaces/fragments
+cd ~/omni/products/fragments
 cargo build --release
 cp target/release/fragments ~/.local/bin/fragments
 fragments --help
@@ -20,22 +20,22 @@ Run from a site root:
 ```bash
 cd <site-root>
 fragments sync           # one-shot
-fragments watch          # sync + watch fragments/
-fragments check          # CI gate, exit 1 if stale
-fragments init <file>    # scaffold new page with marker pairs
-fragments extract        # detect duplicate blocks, extract to _fragments/, insert markers
+fragments watch          # sync + watch _fragments/
+fragments check          # CI gate, exit 1 if stale or malformed
+fragments list           # fragments + reference counts
+fragments config         # print effective config
+fragments doctor         # orphans, unpaired/duplicate markers
 ```
 
 ## Charter
 
 This binary does:
 
-- Replaces marker-region content in target files with `fragments/<name>.<ext>` source (format-agnostic)
-- Watches `fragments/` for changes and re-syncs on save
+- Replaces marker-region content in target files with `_fragments/<name>` source — format-agnostic, using the target file's own comment syntax (HTML `<!-- -->`, CSS/JS `/* */`, YAML/shell `# `, SQL `-- `, …)
+- Watches `_fragments/` for changes and re-syncs on save
 - Reports stale, malformed, or duplicate markers with non-zero exit (CI usable)
 - Lists fragments and their references; doctor surfaces orphans
-- (HTML-specific, moves to pagekit in Stage 2) Scaffolds new pages via `init`
-- (HTML-specific, moves to pagekit in Stage 2) Extracts shared DOM blocks via `extract`
+- Resolves comment syntax per file extension via a built-in table, extensible through the `[syntax]` config section
 
 This binary does NOT:
 
@@ -47,9 +47,9 @@ This binary does NOT:
 
 ## Skills in scope
 
-- The 8 subcommands above
-- Customization via `fragments.toml` (`marker_prefix`, `fragments_dir`, `target_dir`, `exclude_dirs`, `max_depth`)
-- HTML-specific config (`[[extract.candidates]]`) is here at Stage 1; moves to pagekit at Stage 2
+- The 6 subcommands above (`sync`, `watch`, `check`, `list`, `config`, `doctor`)
+- Customization via `fragments.toml` (`marker_prefix`, `fragments_dir`, `target_dir`, `exclude_dirs`, `max_depth`, `[syntax]` overrides)
+- The built-in extension→comment-syntax table in `src/syntax.rs` (HTML scaffolding / DOM extraction live in pagekit, not here)
 
 ## Tools in scope
 

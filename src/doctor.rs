@@ -1,7 +1,10 @@
 use crate::config::Config;
-use crate::sync::{check_all, collect_html_files, referenced_fragment_names, CheckIssue};
+use crate::sync::{
+    check_all, collect_target_files, fragment_files, fragment_name, referenced_fragment_names,
+    CheckIssue,
+};
 use anyhow::{bail, Result};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -22,30 +25,33 @@ pub fn run_doctor(root: &Path, config: &Config) -> Result<usize> {
         );
     }
 
-    let frag_names: HashSet<String> = fs::read_dir(&fragments_dir)?
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map(|x| x == "html").unwrap_or(false))
-        .map(|e| e.path().file_stem().unwrap().to_string_lossy().to_string())
+    // Fragment name -> source file name (e.g. "nav" -> "nav.html"), so orphan
+    // messages can show the real file regardless of its extension.
+    let frag_files: HashMap<String, String> = fragment_files(&fragments_dir)?
+        .iter()
+        .filter_map(|p| {
+            let name = fragment_name(p)?;
+            let file = p.file_name()?.to_str()?.to_string();
+            Some((name, file))
+        })
         .collect();
 
     let scan_root = root.join(&config.target_dir);
-    let files = collect_html_files(
-        &scan_root,
-        &fragments_dir,
-        &config.exclude_dirs,
-        config.max_depth,
-    );
+    let files = collect_target_files(&scan_root, &fragments_dir, config);
 
     // Map fragment-name -> pages that reference it
     let mut references: HashMap<String, Vec<String>> = HashMap::new();
     for path in &files {
+        let Some(syntax) = config.syntax_for(path) else {
+            continue;
+        };
         let content = fs::read_to_string(path)?;
         let rel = path
             .strip_prefix(root)
             .unwrap_or(path)
             .display()
             .to_string();
-        for name in referenced_fragment_names(&content, &config.marker_prefix) {
+        for name in referenced_fragment_names(&content, &syntax, &config.marker_prefix) {
             references.entry(name).or_default().push(rel.clone());
         }
     }
@@ -53,23 +59,26 @@ pub fn run_doctor(root: &Path, config: &Config) -> Result<usize> {
     let mut issues = 0;
 
     // 1. Orphan fragments
-    for frag in &frag_names {
-        if !references.contains_key(frag) {
-            println!(
-                "orphan fragment: {}/{}.html — no page references it",
-                config.fragments_dir, frag
-            );
-            issues += 1;
-        }
+    let mut orphan_frags: Vec<(&String, &String)> = frag_files
+        .iter()
+        .filter(|(name, _)| !references.contains_key(*name))
+        .collect();
+    orphan_frags.sort();
+    for (_, file) in orphan_frags {
+        println!(
+            "orphan fragment: {}/{} — no page references it",
+            config.fragments_dir, file
+        );
+        issues += 1;
     }
 
     // 2. Orphan markers
     for (name, pages) in &references {
-        if !frag_names.contains(name) {
+        if !frag_files.contains_key(name) {
             let pages_str = pages.join(", ");
             println!(
-                "orphan marker: '{}' referenced by {} but no {}/{}.html exists",
-                name, pages_str, config.fragments_dir, name
+                "orphan marker: '{}' referenced by {} but no fragment named '{}' exists in {}/",
+                name, pages_str, name, config.fragments_dir
             );
             issues += 1;
         }

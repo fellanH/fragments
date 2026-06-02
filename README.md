@@ -1,6 +1,15 @@
 # fragments
 
-A single Rust binary that syncs shared text fragments across files. One primitive: marked regions in target files are kept identical to source files in `fragments/`. Every file is valid, self-contained content at all times.
+A single Rust binary that syncs shared text fragments across files. One
+primitive: marked regions in target files are kept identical to source files
+in `_fragments/`. Every file stays valid in its native format at all times.
+
+**Format-agnostic.** Markers are ordinary comments in the *target file's own
+format*, so the same fragment syncs into HTML, CSS, JS, Markdown, YAML, shell,
+SQL, and more — each file staying valid in its native syntax.
+
+For HTML-specific helpers (page scaffolding, DOM-aware extraction, link
+integrity), see the sibling [`pagekit`](../pagekit), which composes this core.
 
 ## Install
 
@@ -11,62 +20,96 @@ cargo install --path .
 ## Usage
 
 ```bash
-fragments <project-root> sync            # one-shot sync (default)
-fragments <project-root> watch           # sync + watch fragments/ for changes
-fragments <project-root> check           # dry-run, exit 1 if stale
-fragments <project-root> init about.html # create new page with marker pairs
-fragments <project-root> extract         # detect duplicate blocks, extract to fragments/, insert markers
+fragments <project-root> sync     # one-shot sync (default)
+fragments <project-root> watch    # sync + watch _fragments/ for changes
+fragments <project-root> check    # dry-run, exit 1 if stale or malformed (CI gate)
+fragments <project-root> list     # list fragments and how many files reference each
+fragments <project-root> config   # print effective config (defaults + fragments.toml)
+fragments <project-root> doctor   # health check: orphans, unpaired/duplicate markers
 ```
+
+`<project-root>` defaults to `.`.
 
 ## How it works
 
-Place shared markup in `fragments/<name>.html`. In any target file, add a marker pair:
+Place shared content in `_fragments/<name>.<ext>`. The fragment **name** is the
+file stem (`nav.html` → `nav`); its extension is irrelevant to matching. In any
+target file, add a marker pair using *that file's* comment syntax:
 
 ```html
 <!-- fragment:nav -->
-<nav>This content is replaced on sync</nav>
+<nav>replaced on sync</nav>
 <!-- /fragment:nav -->
 ```
 
-Run `fragments sync` — the tool replaces content between markers with the corresponding fragment source file. Content outside markers is never touched. Files are only written when content actually changes.
-
-Every file stays valid, self-contained HTML at all times. Markers are standard HTML comments — invisible to browsers. No template syntax, no placeholders, no build output.
-
-## Example
-
-```
-my-site/
-  index.html              ← contains marker pairs
-  pricing.html
-  about.html
-  fragments/
-    head.html             ← shared <head> content
-    nav.html              ← shared navigation
-    footer.html           ← shared footer
-    cta.html              ← shared call-to-action
-  fragments.toml          ← optional config
+```css
+/* fragment:banner */
+.banner { color: red; }
+/* /fragment:banner */
 ```
 
-Edit `fragments/nav.html`, run `fragments sync`, and every page with `<!-- fragment:nav -->` markers updates. One edit, one command, full propagation.
+```yaml
+# fragment:meta
+author: old
+# /fragment:meta
+```
+
+Run `fragments sync` — the tool replaces content between markers with the
+corresponding fragment source. Content outside markers is never touched. Files
+are only written when content actually changes (byte comparison), so diffs stay
+minimal.
+
+### Supported formats
+
+| Comment style | Extensions (built-in) |
+| --- | --- |
+| `<!-- … -->` | html, htm, xhtml, xml, svg, vue, svelte, md, markdown |
+| `/* … */` | css, scss, less, js, mjs, cjs, jsx, ts, tsx, c, cc, cpp, h, hpp, java, go, rs, swift, kt, php, scala, dart |
+| `# …` (line) | yaml, yml, toml, sh, bash, zsh, fish, py, rb, pl, r, conf, cfg, ini, env, Dockerfile, Makefile, .gitignore |
+| `-- …` (line) | sql, lua, hs, elm |
+
+Anything not in the table is invisible to fragments. Add or override formats in
+`fragments.toml` (see below).
 
 ## Configuration
 
-Optional `fragments.toml` at the project root:
+Optional `fragments.toml` at the project root — all fields have defaults:
 
 ```toml
-marker_prefix = "fragment"   # prefix in <!-- PREFIX:name --> markers
-fragments_dir = "fragments"  # folder containing fragment source files
+marker_prefix = "fragment"    # prefix in the <prefix>:name markers
+fragments_dir = "_fragments"  # folder holding fragment source files
+target_dir    = "."           # root to scan for target files
+exclude_dirs  = []            # subdirectories to skip
+max_depth     = 5             # how deep to walk from target_dir
+
+# Extend or override the built-in comment-syntax table.
+# Key = file extension (or file name for extensionless files).
+# Value = [open, close]; an empty close means a line comment.
+[syntax]
+njk = ["{#", "#}"]   # Nunjucks block comment
 ```
 
-Both fields are optional. Missing file = all defaults. Different projects can use different conventions (e.g. `marker_prefix = "html-sync"` for backwards compatibility).
+The underscore-prefixed `_fragments` default keeps static-site hosts (Cloudflare
+Pages, Eleventy, Jekyll) from deploying the source folder.
 
 ## Design
 
-- **The file is the truth.** Every `.html` file is valid, self-contained HTML. No runtime resolution.
-- **Output = input.** The tool writes the same format it reads. Stop using it anytime and keep your files.
-- **Single binary, zero dependencies.** No `node_modules`, no package manager, no version matrix.
-- **Agent-first.** Designed so AI agents can manage large static sites with minimal context: `ls *.html` for the sitemap, `ls fragments/` for shared content, one command to propagate.
+- **The file is the truth.** Every target file is valid in its native format. No
+  runtime resolution, no source/output split.
+- **Output = input.** The tool writes the same format it reads. Stop using it
+  anytime and keep your files.
+- **Single binary.** No `node_modules`, no package manager, no version matrix.
+- **Agent-first.** `ls _fragments/` for shared content, one command to
+  propagate — designed so agents can manage large sites with minimal context.
+
+## Library
+
+`fragments` is also a Rust library. The stable high-level API is `sync_all` /
+`sync_all_with`, `check_all` / `check_all_with`, `watch::run` / `watch::run_with`,
+`Config`, and the `SyncHook` trait for per-target content transforms. See
+`pagekit` for a reference consumer.
 
 ## License
 
-MIT
+Dual-licensed under either of [MIT](LICENSE-MIT) or
+[Apache-2.0](LICENSE-APACHE), at your option.

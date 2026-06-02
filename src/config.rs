@@ -1,5 +1,7 @@
+use crate::syntax::{self, CommentSyntax};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -20,6 +22,20 @@ pub struct Config {
     /// Maximum directory depth to scan from `target_dir`. Files deeper
     /// than this are invisible to fragments.
     pub max_depth: usize,
+    /// Per-extension comment syntax, extending and overriding the built-in
+    /// table. Maps a lowercase, dot-less file extension (or the lowercase
+    /// file name for extensionless files like `Makefile`) to `[open, close]`.
+    /// An empty `close` means a line comment terminated by end-of-line.
+    ///
+    /// ```toml
+    /// [syntax]
+    /// njk = ["{#", "#}"]   # Nunjucks block comment
+    /// toml = ["#", ""]     # already built-in, shown for shape
+    /// ```
+    ///
+    /// Declared last so it serializes after the scalar keys (TOML requires
+    /// tables to follow top-level values).
+    pub syntax: HashMap<String, (String, String)>,
 }
 
 impl Default for Config {
@@ -39,6 +55,9 @@ impl Default for Config {
             // belong in pagekit's config layer or per-project fragments.toml.
             exclude_dirs: Vec::new(),
             max_depth: 5,
+            // Empty: the built-in extension table (see crate::syntax) covers
+            // the common formats. Entries here extend or override it.
+            syntax: HashMap::new(),
         }
     }
 }
@@ -52,5 +71,12 @@ impl Config {
         } else {
             Ok(Self::default())
         }
+    }
+
+    /// Resolve the comment syntax for a target/fragment path: config
+    /// `[syntax]` overrides first, then the built-in table. `None` means
+    /// the format has no known comment syntax and is invisible to fragments.
+    pub fn syntax_for(&self, path: &Path) -> Option<CommentSyntax> {
+        syntax::resolve(path, &self.syntax)
     }
 }

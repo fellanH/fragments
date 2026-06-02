@@ -10,6 +10,7 @@
 //! - [`check_all`] — report stale, malformed, and duplicate markers
 //! - [`Fragments`] — load fragment source files for direct manipulation
 //! - [`referenced_fragment_names`] — extract fragment names referenced by a page
+//! - [`syntax::CommentSyntax`] — comment delimiters per file format
 //! - [`watch::run`] / [`watch::run_with`] — long-running watch loop (with optional hooks)
 //! - [`list::list_fragments`] — print fragment-to-page reference map
 //! - [`doctor::run_doctor`] — health checks (orphans, unpaired, duplicates)
@@ -18,6 +19,7 @@ pub mod config;
 pub mod doctor;
 pub mod list;
 pub mod sync;
+pub mod syntax;
 pub mod watch;
 
 pub use config::Config;
@@ -25,3 +27,4 @@ pub use sync::{
     check_all, check_all_with, referenced_fragment_names, sync_all, sync_all_with, CheckIssue,
     Fragments, SyncHook,
 };
+pub use syntax::CommentSyntax;

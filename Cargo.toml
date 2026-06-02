@@ -1,8 +1,16 @@
 [package]
 name = "fragments"
-version = "0.6.1"
+version = "0.7.0"
 edition = "2021"
-description = "Sync shared text fragments across files — one primitive, unlimited coverage"
+description = "Sync shared text fragments across files — one primitive, any text format"
+authors = ["Felix Hellström"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/fellanH/fragments"
+homepage = "https://github.com/fellanH/fragments"
+readme = "README.md"
+keywords = ["fragments", "include", "templating", "static-site", "sync"]
+categories = ["command-line-utilities", "development-tools", "web-programming"]
+exclude = ["audits/", "specs/", "tasks/", "AGENTS.md", "workspace.yaml", ".github/"]
 
 [lib]
 name = "fragments"

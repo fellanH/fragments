@@ -1,16 +1,10 @@
 use crate::config::Config;
+use crate::syntax::CommentSyntax;
 use anyhow::{bail, Context, Result};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
-
-fn open_tag(prefix: &str, name: &str) -> String {
-    format!("<!-- {prefix}:{name} -->")
-}
-
-fn close_tag(prefix: &str, name: &str) -> String {
-    format!("<!-- /{prefix}:{name} -->")
-}
 
 pub struct Fragments {
     prefix: String,
@@ -19,26 +13,25 @@ pub struct Fragments {
 
 impl Fragments {
     pub fn load(fragments_dir: &Path, prefix: &str) -> Result<Self> {
-        let mut entries = Vec::new();
+        let mut entries: Vec<(String, String)> = Vec::new();
+        let mut seen: std::collections::HashMap<String, PathBuf> = std::collections::HashMap::new();
 
-        let mut files: Vec<_> = fs::read_dir(fragments_dir)
-            .with_context(|| format!("cannot read {}", fragments_dir.display()))?
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .map(|ext| ext == "html")
-                    .unwrap_or(false)
-            })
-            .collect();
-
-        files.sort_by_key(|e| e.file_name());
-
-        for entry in files {
-            let path = entry.path();
-            let name = path.file_stem().unwrap().to_string_lossy().to_string();
-            let content =
-                fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+        for path in fragment_files(fragments_dir)? {
+            let Some(name) = fragment_name(&path) else {
+                continue;
+            };
+            if let Some(prev) = seen.get(&name) {
+                bail!(
+                    "duplicate fragment name '{}': both {} and {} resolve to it. \
+                     Fragment names are file stems and must be unique.",
+                    name,
+                    prev.display(),
+                    path.display()
+                );
+            }
+            let content = fs::read_to_string(&path)
+                .with_context(|| format!("reading fragment {}", path.display()))?;
+            seen.insert(name.clone(), path);
             entries.push((name, content));
         }
 
@@ -49,25 +42,80 @@ impl Fragments {
     }
 }
 
+/// All fragment source files in `dir`: regular, non-hidden files, sorted by
+/// name. Format-agnostic — any extension is a candidate; the fragment name is
+/// the file stem. Hidden files (dotfiles) and subdirectories are skipped.
+pub(crate) fn fragment_files(dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut files: Vec<PathBuf> = fs::read_dir(dir)
+        .with_context(|| format!("cannot read {}", dir.display()))?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_file()
+                && p.file_name()
+                    .and_then(|f| f.to_str())
+                    .map(|f| !f.starts_with('.'))
+                    .unwrap_or(false)
+        })
+        .collect();
+    files.sort();
+    Ok(files)
+}
+
+/// The fragment name for a source file: its file stem. `None` if the stem
+/// can't be derived (e.g. a non-UTF-8 name), in which case the file is skipped
+/// rather than panicking.
+pub(crate) fn fragment_name(path: &Path) -> Option<String> {
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string())
+}
+
+/// Find a marker tag in `hay`. For block comments a plain substring match is
+/// exact (the closing delimiter delimits the name). For line comments the
+/// match must be followed by end-of-line or end-of-string, so a marker for
+/// `nav` does not spuriously match inside `navbar`.
+fn find_marker(hay: &str, tag: &str, is_line: bool) -> Option<usize> {
+    if !is_line {
+        return hay.find(tag);
+    }
+    let mut from = 0;
+    while let Some(rel) = hay[from..].find(tag) {
+        let pos = from + rel;
+        let after = pos + tag.len();
+        let boundary = match hay[after..].chars().next() {
+            Some(c) => c == '\n' || c == '\r',
+            None => true,
+        };
+        if boundary {
+            return Some(pos);
+        }
+        from = after;
+    }
+    None
+}
+
 fn replace_marker_region(
-    html: &str,
+    content: &str,
+    syntax: &CommentSyntax,
     prefix: &str,
     name: &str,
     new_content: &str,
 ) -> Option<String> {
-    let open = open_tag(prefix, name);
-    let close = close_tag(prefix, name);
+    let open_tag = syntax.open_marker(prefix, name);
+    let close_tag = syntax.close_marker(prefix, name);
 
-    let open_start = html.find(&open)?;
-    let content_start = open_start + open.len();
-    let close_start = html[content_start..].find(&close)? + content_start;
+    let open_pos = find_marker(content, &open_tag, syntax.is_line())?;
+    let content_start = open_pos + open_tag.len();
+    let close_rel = find_marker(&content[content_start..], &close_tag, syntax.is_line())?;
+    let close_start = content_start + close_rel;
 
-    let mut result = String::with_capacity(html.len());
-    result.push_str(&html[..content_start]);
+    let mut result = String::with_capacity(content.len());
+    result.push_str(&content[..content_start]);
     result.push('\n');
     result.push_str(new_content.trim_end());
     result.push('\n');
-    result.push_str(&html[close_start..]);
+    result.push_str(&content[close_start..]);
     Some(result)
 }
 
@@ -100,15 +148,16 @@ pub trait SyncHook: Send + Sync {
 }
 
 fn apply_fragments(
-    html: &str,
+    content: &str,
     frags: &Fragments,
+    syntax: &CommentSyntax,
     target: &Path,
     root: &Path,
     hooks: &[Box<dyn SyncHook>],
 ) -> Result<String> {
-    let mut result = html.to_string();
-    for (name, content) in &frags.entries {
-        let mut transformed = content.clone();
+    let mut result = content.to_string();
+    for (name, frag_content) in &frags.entries {
+        let mut transformed = frag_content.clone();
         for hook in hooks {
             transformed = hook
                 .transform(name, &transformed, target, root)
@@ -120,32 +169,39 @@ fn apply_fragments(
                     )
                 })?;
         }
-        if let Some(updated) = replace_marker_region(&result, &frags.prefix, name, &transformed) {
+        if let Some(updated) =
+            replace_marker_region(&result, syntax, &frags.prefix, name, &transformed)
+        {
             result = updated;
         }
     }
     Ok(result)
 }
 
-pub(crate) fn collect_html_files(
+/// Collect target files under `scan_root`: regular files whose format has a
+/// known comment syntax (built-in table or `[syntax]` config). Files in
+/// `fragments_dir` and `config.exclude_dirs` are skipped, and the walk is
+/// bounded by `config.max_depth`.
+pub(crate) fn collect_target_files(
     scan_root: &Path,
     fragments_dir: &Path,
-    exclude_dirs: &[String],
-    max_depth: usize,
+    config: &Config,
 ) -> Vec<PathBuf> {
-    let excluded: Vec<PathBuf> = exclude_dirs.iter().map(|d| scan_root.join(d)).collect();
+    let excluded: Vec<PathBuf> = config
+        .exclude_dirs
+        .iter()
+        .map(|d| scan_root.join(d))
+        .collect();
 
     WalkDir::new(scan_root)
-        .max_depth(max_depth)
+        .max_depth(config.max_depth)
         .into_iter()
         .filter_entry(|e| {
             let p = e.path();
             !p.starts_with(fragments_dir) && !excluded.iter().any(|ex| p.starts_with(ex))
         })
         .filter_map(Result::ok)
-        .filter(|e| {
-            e.file_type().is_file() && e.path().extension().map(|x| x == "html").unwrap_or(false)
-        })
+        .filter(|e| e.file_type().is_file() && config.syntax_for(e.path()).is_some())
         .map(|e| e.into_path())
         .collect()
 }
@@ -182,16 +238,11 @@ pub fn sync_all_with(root: &Path, config: &Config, hooks: &[Box<dyn SyncHook>]) 
     }
 
     let frags = Fragments::load(&fragments_dir, &config.marker_prefix)?;
-    let files = collect_html_files(
-        &scan_root,
-        &fragments_dir,
-        &config.exclude_dirs,
-        config.max_depth,
-    );
+    let files = collect_target_files(&scan_root, &fragments_dir, config);
     let mut updated = 0;
 
     for path in &files {
-        if sync_one(path, root, &frags, hooks)? {
+        if sync_one(path, root, &frags, config, hooks)? {
             updated += 1;
             println!("  {}", path.strip_prefix(root).unwrap_or(path).display());
         }
@@ -204,11 +255,17 @@ fn sync_one(
     path: &Path,
     root: &Path,
     frags: &Fragments,
+    config: &Config,
     hooks: &[Box<dyn SyncHook>],
 ) -> Result<bool> {
+    // Determined-present: collect_target_files only yields files with a
+    // resolvable syntax. Guard defensively anyway.
+    let Some(syntax) = config.syntax_for(path) else {
+        return Ok(false);
+    };
     let current =
         fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    let updated = apply_fragments(&current, frags, path, root, hooks)?;
+    let updated = apply_fragments(&current, frags, &syntax, path, root, hooks)?;
 
     if updated == current {
         return Ok(false);
@@ -263,19 +320,17 @@ pub fn check_all_with(
     let fragments_dir = root.join(&config.fragments_dir);
     let scan_root = root.join(&config.target_dir);
     let frags = Fragments::load(&fragments_dir, &config.marker_prefix)?;
-    let files = collect_html_files(
-        &scan_root,
-        &fragments_dir,
-        &config.exclude_dirs,
-        config.max_depth,
-    );
+    let files = collect_target_files(&scan_root, &fragments_dir, config);
     let mut issues = Vec::new();
 
     for path in &files {
+        let Some(syntax) = config.syntax_for(path) else {
+            continue;
+        };
         let current = fs::read_to_string(path)?;
         let rel = path.strip_prefix(root).unwrap_or(path).to_path_buf();
 
-        for issue in validate_markers(&current, &config.marker_prefix) {
+        for issue in validate_markers(&current, &syntax, &config.marker_prefix) {
             match issue {
                 MarkerIssue::UnpairedOpen(name) => issues.push(CheckIssue::UnpairedOpen {
                     path: rel.clone(),
@@ -292,7 +347,7 @@ pub fn check_all_with(
             }
         }
 
-        let expected = apply_fragments(&current, &frags, path, root, hooks)?;
+        let expected = apply_fragments(&current, &frags, &syntax, path, root, hooks)?;
         if current != expected {
             issues.push(CheckIssue::Stale(rel));
         }
@@ -307,36 +362,53 @@ enum MarkerIssue {
     DuplicatePair(String),
 }
 
-fn validate_markers(html: &str, prefix: &str) -> Vec<MarkerIssue> {
-    let open_prefix = format!("<!-- {prefix}:");
-    let close_prefix = format!("<!-- /{prefix}:");
-    let suffix = " -->";
+/// Scan `content` for marker tags in document order, returning
+/// `(is_open, name)` for each well-formed marker. Format-aware via `syntax`.
+fn scan_markers(content: &str, syntax: &CommentSyntax, prefix: &str) -> Vec<(bool, String)> {
+    let open_pat = syntax.open_search(prefix);
+    let close_pat = syntax.close_search(prefix);
+    let block_term = if syntax.is_line() {
+        String::new()
+    } else {
+        format!(" {}", syntax.close)
+    };
 
-    let mut markers: Vec<(bool, String)> = Vec::new();
+    let mut markers = Vec::new();
     let mut idx = 0;
-    while idx < html.len() {
-        let next_open = html[idx..].find(&open_prefix);
-        let next_close = html[idx..].find(&close_prefix);
+    while idx < content.len() {
+        let next_open = content[idx..].find(&open_pat).map(|o| idx + o);
+        let next_close = content[idx..].find(&close_pat).map(|o| idx + o);
 
-        let (start, is_open, prefix_len) = match (next_open, next_close) {
+        let (start, is_open, pat_len) = match (next_open, next_close) {
             (None, None) => break,
-            (Some(o), None) => (idx + o, true, open_prefix.len()),
-            (None, Some(c)) => (idx + c, false, close_prefix.len()),
+            (Some(o), None) => (o, true, open_pat.len()),
+            (None, Some(c)) => (c, false, close_pat.len()),
             (Some(o), Some(c)) => {
-                if idx + o < idx + c {
-                    (idx + o, true, open_prefix.len())
+                if o < c {
+                    (o, true, open_pat.len())
                 } else {
-                    (idx + c, false, close_prefix.len())
+                    (c, false, close_pat.len())
                 }
             }
         };
 
-        let name_start = start + prefix_len;
-        let Some(suffix_offset) = html[name_start..].find(suffix) else {
-            break;
+        let name_start = start + pat_len;
+        let (name_end, advance) = if syntax.is_line() {
+            match content[name_start..].find('\n') {
+                Some(o) => (name_start + o, name_start + o + 1),
+                None => (content.len(), content.len()),
+            }
+        } else {
+            match content[name_start..].find(&block_term) {
+                Some(o) => (name_start + o, name_start + o + block_term.len()),
+                None => break,
+            }
         };
-        let raw_name = html[name_start..name_start + suffix_offset].trim();
-        // Skip if the "name" contains spaces or other suspicious chars — it's not a real marker
+
+        let raw_name = content[name_start..name_end].trim();
+        // Skip if the "name" contains spaces or other suspicious chars — it's
+        // not a real marker (e.g. an ordinary comment that happens to share the
+        // opening delimiter).
         if !raw_name.is_empty()
             && raw_name
                 .chars()
@@ -344,8 +416,13 @@ fn validate_markers(html: &str, prefix: &str) -> Vec<MarkerIssue> {
         {
             markers.push((is_open, raw_name.to_string()));
         }
-        idx = name_start + suffix_offset + suffix.len();
+        idx = advance;
     }
+    markers
+}
+
+fn validate_markers(content: &str, syntax: &CommentSyntax, prefix: &str) -> Vec<MarkerIssue> {
+    let markers = scan_markers(content, syntax, prefix);
 
     let mut stack: Vec<String> = Vec::new();
     let mut completed: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -376,31 +453,16 @@ fn validate_markers(html: &str, prefix: &str) -> Vec<MarkerIssue> {
     issues
 }
 
-/// Return the set of fragment names referenced in `html` via opening
-/// markers (`<!-- prefix:NAME -->`). Used by `list` and `doctor` to map
-/// fragment-to-page references and detect orphans.
-pub fn referenced_fragment_names(html: &str, prefix: &str) -> std::collections::HashSet<String> {
-    let open_prefix = format!("<!-- {prefix}:");
-    let suffix = " -->";
-    let mut names = std::collections::HashSet::new();
-    let mut idx = 0;
-    while idx < html.len() {
-        let Some(rel) = html[idx..].find(&open_prefix) else {
-            break;
-        };
-        let name_start = idx + rel + open_prefix.len();
-        let Some(suffix_off) = html[name_start..].find(suffix) else {
-            break;
-        };
-        let raw_name = html[name_start..name_start + suffix_off].trim();
-        if !raw_name.is_empty()
-            && raw_name
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        {
-            names.insert(raw_name.to_string());
-        }
-        idx = name_start + suffix_off + suffix.len();
-    }
-    names
+/// Return the set of fragment names referenced in `content` via opening
+/// markers. Used by `list` and `doctor` to map fragment-to-page references
+/// and detect orphans. Format-aware via `syntax`.
+pub fn referenced_fragment_names(
+    content: &str,
+    syntax: &CommentSyntax,
+    prefix: &str,
+) -> HashSet<String> {
+    scan_markers(content, syntax, prefix)
+        .into_iter()
+        .filter_map(|(is_open, name)| if is_open { Some(name) } else { None })
+        .collect()
 }

@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::sync::{collect_html_files, referenced_fragment_names};
+use crate::sync::{collect_target_files, fragment_files, fragment_name, referenced_fragment_names};
 use anyhow::{bail, Context, Result};
 use std::collections::HashMap;
 use std::fs;
@@ -16,26 +16,23 @@ pub fn list_fragments(root: &Path, config: &Config) -> Result<()> {
         );
     }
 
-    let mut frag_names: Vec<String> = fs::read_dir(&fragments_dir)
+    let mut frag_names: Vec<String> = fragment_files(&fragments_dir)
         .with_context(|| format!("reading {}", fragments_dir.display()))?
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map(|x| x == "html").unwrap_or(false))
-        .map(|e| e.path().file_stem().unwrap().to_string_lossy().to_string())
+        .iter()
+        .filter_map(|p| fragment_name(p))
         .collect();
     frag_names.sort();
 
     let scan_root = root.join(&config.target_dir);
-    let files = collect_html_files(
-        &scan_root,
-        &fragments_dir,
-        &config.exclude_dirs,
-        config.max_depth,
-    );
+    let files = collect_target_files(&scan_root, &fragments_dir, config);
 
     let mut counts: HashMap<String, usize> = HashMap::new();
     for path in &files {
+        let Some(syntax) = config.syntax_for(path) else {
+            continue;
+        };
         let content = fs::read_to_string(path)?;
-        for name in referenced_fragment_names(&content, &config.marker_prefix) {
+        for name in referenced_fragment_names(&content, &syntax, &config.marker_prefix) {
             *counts.entry(name).or_insert(0) += 1;
         }
     }
