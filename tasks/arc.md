@@ -10,6 +10,8 @@ v0.7.0 makes the "format-agnostic" framing *true in code*. Until now the impleme
 
 Also in this pass: dual MIT/Apache licensing + crates.io metadata, tagged-release CI workflow (cross-platform binaries), CHANGELOG, duplicate-fragment-name detection, panic-hardened name derivation, and doc reconvergence (README/AGENTS rewritten; boot path corrected to products/ not workspaces/, command list 6 not 8).
 
+**Released:** `v0.7.0` tag pushed; GitHub Release is live with linux-x86_64 + macOS arm64/x86_64 binaries attached (initial run failed on a missing `contents: write` permission — fixed in the workflow, re-fired, green). `cargo publish` to crates.io is **PARKED on Felix's crates.io token** (external — not forceable from this seat); package passed `cargo package` clean and is ready to ship the moment a token is configured (`cargo login`).
+
 v0.6.0 added the `SyncHook` API for per-target fragment transforms. v0.6.1 closed a gap surfaced by pagekit Sprint 4 D2: `watch::run_with(hooks)` mirrors `sync_all_with`/`check_all_with`, so reactive resyncs honor the same hook stack as initial sync.
 
 ## Decisions
@@ -38,4 +40,4 @@ v0.6.0 added the `SyncHook` API for per-target fragment transforms. v0.6.1 close
 
 ## Blocked
 
-Nothing.
+- **crates.io publish** — needs Felix to configure a crates.io API token (`cargo login`, token from https://crates.io/settings/tokens). No registry credentials exist on the machine. Package is publish-ready (`cargo package` clean); this is the only remaining step to put fragments on crates.io. External action, parked by design — not forceable from this seat.

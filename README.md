@@ -13,6 +13,23 @@ integrity), see the sibling [`pagekit`](../pagekit), which composes this core.
 
 ## Install
 
+**Prebuilt binary** (macOS arm64/x86_64, Linux x86_64) — from the
+[latest release](https://github.com/fellanH/fragments/releases/latest):
+
+```bash
+# pick the asset for your platform, then:
+tar xzf fragments-*-<target>.tar.gz
+install fragments ~/.local/bin/   # or anywhere on PATH
+```
+
+**From crates.io:**
+
+```bash
+cargo install fragments
+```
+
+**From source:**
+
 ```bash
 cargo install --path .
 ```
