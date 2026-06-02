@@ -1,6 +1,6 @@
 [package]
 name = "fragments-sync"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 description = "Sync shared text fragments across files — one primitive, any text format"
 authors = ["Felix Hellström"]
