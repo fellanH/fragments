@@ -10,7 +10,7 @@ v0.7.0 makes the "format-agnostic" framing *true in code*. Until now the impleme
 
 Also in this pass: dual MIT/Apache licensing + crates.io metadata, tagged-release CI workflow (cross-platform binaries), CHANGELOG, duplicate-fragment-name detection, panic-hardened name derivation, and doc reconvergence (README/AGENTS rewritten; boot path corrected to products/ not workspaces/, command list 6 not 8).
 
-**Released:** `v0.7.0` tag pushed; GitHub Release is live with linux-x86_64 + macOS arm64/x86_64 binaries attached (initial run failed on a missing `contents: write` permission — fixed in the workflow, re-fired, green). `cargo publish` to crates.io is **PARKED on Felix's crates.io token** (external — not forceable from this seat); package passed `cargo package` clean and is ready to ship the moment a token is configured (`cargo login`).
+**Released:** `v0.7.0` tag pushed; GitHub Release is live with linux-x86_64 + macOS arm64/x86_64 binaries attached (initial run failed on a missing `contents: write` permission — fixed in the workflow, re-fired, green). **Published to crates.io 2026-06-02 as [`fragments-sync` v0.7.0](https://crates.io/crates/fragments-sync)** (the bare `fragments` name was squatted; binary/CLI command stays `fragments`).
 
 v0.6.0 added the `SyncHook` API for per-target fragment transforms. v0.6.1 closed a gap surfaced by pagekit Sprint 4 D2: `watch::run_with(hooks)` mirrors `sync_all_with`/`check_all_with`, so reactive resyncs honor the same hook stack as initial sync.
 
@@ -33,6 +33,7 @@ v0.6.0 added the `SyncHook` API for per-target fragment transforms. v0.6.1 close
 
 - Default `fragments_dir = "_fragments"` (underscore prefix). Resolved 2026-05-06 — Felix confirmed all sites in his stack use the underscore convention so static-site hosts (CF Pages, Eleventy, Jekyll) treat the folder as infrastructure and skip it during deploy. Was previously `fragments` per spec; flipped to match consumer practice.
 - Comment-syntax-per-extension. Resolved 2026-06-02 (v0.7.0) — built-in extension→syntax table in `src/syntax.rs` plus `[syntax]` config overrides. `/* */`, `# `, `-- `, etc. work natively. Pulled forward from "far future" because the docs/CLI already claimed format-agnosticism the code didn't deliver; the gap was a correctness/credibility bug, not a feature request.
+- **crates.io publish.** Resolved 2026-06-02 — published as [`fragments-sync` v0.7.0](https://crates.io/crates/fragments-sync). The bare `fragments` name was squatted (abandoned v0.1.0 registered 2021-07-29, not actually unclaimed as the prior baton assumed), so the crate ships as `fragments-sync` while the binary/CLI command and `use fragments::` lib name stay `fragments`. Felix configured the token and verified his crates.io email; `cargo install fragments-sync` now works.
 
 ## Backlog
 
@@ -40,4 +41,4 @@ v0.6.0 added the `SyncHook` API for per-target fragment transforms. v0.6.1 close
 
 ## Blocked
 
-- **crates.io publish** — needs Felix to configure a crates.io API token (`cargo login`, token from https://crates.io/settings/tokens). No registry credentials exist on the machine. Package is publish-ready (`cargo package` clean); this is the only remaining step to put fragments on crates.io. External action, parked by design — not forceable from this seat.
+(none)

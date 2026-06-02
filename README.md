@@ -22,10 +22,10 @@ tar xzf fragments-*-<target>.tar.gz
 install fragments ~/.local/bin/   # or anywhere on PATH
 ```
 
-**From crates.io:**
+**From crates.io** (published as [`fragments-sync`](https://crates.io/crates/fragments-sync); the original `fragments` name was already taken — the installed command is still `fragments`):
 
 ```bash
-cargo install fragments
+cargo install fragments-sync
 ```
 
 **From source:**
