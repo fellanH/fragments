@@ -1,6 +1,8 @@
 # fragments — handoff baton
 
-_Updated 2026-06-03 (after suite first-principles + customer-surface polish; HEAD `4cfc8ca`). Seat: fragments worker. Tree clean, `main` == `origin/main`._
+_Updated 2026-06-03 (after suite first-principles + customer-surface polish + domain.toml registration; HEAD `199c37d`). Seat: fragments worker. Tree clean, `main` == `origin/main`._
+
+> **Session 3 (2026-06-03) — suite-manifest registration.** Committed `domain.toml` `[exposes]` block (`199c37d`): fragments owns the `fragments` capability — `fragments-sync` lib (pagekit links it by name) + the `fragments` CLI; `transport="library"` per the weave precedent, `[consumes]` none. Completes the 2026-06-02 suite sweep that left this seat a bare stub. Single relay candidate for the **pagekit** seat (NOT actioned here, per scope): pagekit's `domain.toml` is still a bare stub and should declare `[[consumes]] id="fragments"` to close the dependency edge. Still zero core work; all "Do NOT" items below stand.
 
 ## TL;DR for the next agent
 
