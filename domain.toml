@@ -1,0 +1,20 @@
+# domain.toml — fragments: format-agnostic marker-region sync (suite compose-seam primitive)
+id = "fragments"
+version = "0.1.0"
+group = "website-suite"
+
+# Capability sphere resolved 2026-06-03 (completes the suite-manifest sweep; fragments
+# carried only the bare id/version/group stub while capability-owning siblings — weave,
+# migrate, freedom-cms — declared theirs). fragments OWNS the `fragments` capability: the
+# published `fragments-sync` crate (lib `use fragments::`) that pagekit links by NAME
+# (`fragments = { path = "../fragments", package = "fragments-sync" }`), plus a standalone
+# `fragments` CLI. The library is the cross-domain consumption edge → transport="library"
+# (weave precedent); the CLI bin is the end-user surface. Declared so pagekit resolves
+# fragments by NAME, mirroring weave's rationale for its consumers.
+[exposes]
+fragments = { transport = "library", crates = [
+  "fragments-sync",  # marker-region sync core: Config/SyncHook + sync/check/watch APIs
+], bin = "target/release/fragments", description = "Format-agnostic marker-region sync — the suite's compose-seam primitive; consumed by pagekit as a cargo lib by name, also a standalone CLI" }
+
+# [consumes]: none — fragments is a standalone, dependency-light primitive at the bottom
+# of the compose stack; it consumes no omni capability by name.
